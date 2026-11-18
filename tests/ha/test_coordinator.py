@@ -12,8 +12,8 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
-from custom_components.grdf_conso.api import GrdfAuthError, GrdfTemporaryError
-from custom_components.grdf_conso.const import CONF_MONTHLY, DOMAIN
+from custom_components.grdf_conso.api import GrdfAuthError, GrdfTemporaryError, Reading
+from custom_components.grdf_conso.const import CONF_MONTHLY, DOMAIN, PARIS
 from custom_components.grdf_conso.coordinator import (
     FetchState,
     async_clear_auth_refused,
@@ -51,7 +51,7 @@ async def test_first_setup_backfills_statistics(hass: HomeAssistant, grdf: FakeC
     assert grdf.calls == [
         ("daily", OLDEST, YESTERDAY),
         ("temperatures", YESTERDAY, 10),
-        ("published", YESTERDAY - timedelta(days=396), YESTERDAY),
+        ("published", YESTERDAY - timedelta(days=1830), YESTERDAY),  # 5 years when backfilling
     ]
     rows = await stats(hass, ENERGY)
     assert len(rows) == 9  # 10 days, one without a value
@@ -111,11 +111,12 @@ async def test_hole_filled_later_keeps_sums_consistent(
 async def test_catches_up_after_downtime(hass: HomeAssistant, grdf: FakeClient) -> None:
     entry = make_entry(history_days=60)
     entry.add_to_hass(hass)
-    state = FetchState(last_day={PCE: YESTERDAY - timedelta(days=20)})
+    state = FetchState(last_day={PCE: YESTERDAY - timedelta(days=20)}, backfilled_days=60)
     with patch.object(FetchState, "from_dict", return_value=state):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
     assert grdf.calls[0] == ("daily", YESTERDAY - timedelta(days=19), YESTERDAY)
+    assert grdf.calls[-1] == ("published", YESTERDAY - timedelta(days=396), YESTERDAY)
 
 
 async def test_refused_authentication_stops_everything(
@@ -199,7 +200,7 @@ async def test_one_fetch_per_day(
 @pytest.mark.parametrize(
     "state",
     [
-        FetchState(last_day={PCE: YESTERDAY}),  # already up to date
+        FetchState(last_day={PCE: YESTERDAY}, backfilled_days=10),  # already up to date
         FetchState(last_attempt=NOW - timedelta(hours=1)),  # tried recently (restart loop)
     ],
 )
@@ -221,7 +222,7 @@ async def test_before_the_fetch_hour_yesterday_is_not_expected_yet(
     freezer.move_to(datetime(2026, 3, 10, 6, 0, tzinfo=UTC))  # 07:00 in Paris
     entry = make_entry()
     entry.add_to_hass(hass)
-    state = FetchState(last_day={PCE: YESTERDAY - timedelta(days=1)})
+    state = FetchState(last_day={PCE: YESTERDAY - timedelta(days=1)}, backfilled_days=10)
     with patch.object(FetchState, "from_dict", return_value=state):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
@@ -264,6 +265,7 @@ def test_fetch_state_round_trip() -> None:
         last_attempt=NOW,
         last_success=NOW - timedelta(days=1),
         last_day={PCE: YESTERDAY},
+        backfilled_days=730,
     )
     assert FetchState.from_dict(state.as_dict()) == state
     assert FetchState.from_dict(None) == FetchState()
@@ -284,3 +286,79 @@ async def test_state_written_by_the_first_version_triggers_a_full_reimport(
     assert grdf.calls[0] == ("daily", OLDEST, YESTERDAY)  # the whole history, not 7 days
     assert len(await stats(hass, ENERGY)) == 10
     assert hass_storage[storage_key(entry.entry_id)]["version"] == 3
+
+
+def _period(start: date, end: date, kwh: float) -> Reading:
+    at_six = lambda d: datetime(d.year, d.month, d.day, 6, tzinfo=PARIS)  # noqa: E731
+    return Reading(
+        None, at_six(start), at_six(end), kwh, kwh / 10, None, None, 11.5, "Mesuré", "Publiée"
+    )
+
+
+async def test_billing_readings_become_their_own_statistics(
+    hass: HomeAssistant, grdf: FakeClient
+) -> None:
+    grdf.published = [
+        _period(date(2025, 12, 27), date(2026, 1, 27), 60000.0),
+        _period(date(2026, 1, 27), date(2026, 3, 1), 45000.0),
+        Reading(None, None, None, 1.0, None, None, None, None, None, None),  # unusable: skipped
+    ]
+    entry = make_entry()
+    await setup(hass, entry)
+
+    rows = await stats(hass, statistic_id(PCE, "billed_energy"))
+    assert [(r["start"], r["state"], r["sum"]) for r in rows] == [
+        (datetime(2025, 12, 27, 5, tzinfo=UTC).timestamp(), 60000.0, 60000.0),
+        (datetime(2026, 1, 27, 5, tzinfo=UTC).timestamp(), 45000.0, 105000.0),
+    ]
+    assert (await stats(hass, statistic_id(PCE, "billed_volume")))[-1]["sum"] == 10500.0
+    assert len(await stats(hass, ENERGY)) == 10  # the daily series is untouched
+
+    # An older period published later is inserted and the sums follow.
+    grdf.published.insert(0, _period(date(2025, 11, 27), date(2025, 12, 27), 30000.0))
+    await entry.runtime_data.async_refresh()
+    rows = await stats(hass, statistic_id(PCE, "billed_energy"))
+    assert [r["sum"] for r in rows] == [30000.0, 90000.0, 135000.0]
+
+
+async def test_deeper_history_asked_in_the_options_is_imported_once(
+    hass: HomeAssistant, grdf: FakeClient, freezer: FrozenDateTimeFactory
+) -> None:
+    entry = make_entry()
+    await setup(hass, entry)
+    assert entry.runtime_data.state.backfilled_days == 10
+    assert (await stats(hass, ENERGY))[0]["start"] == gas_day_start(OLDEST).timestamp()
+
+    # The user raises the depth: the entry reloads and the older days are fetched without
+    # waiting for the next day (only the manual-refresh cooldown applies).
+    grdf.calls.clear()
+    freezer.move_to(NOW + timedelta(minutes=10))
+    hass.config_entries.async_update_entry(entry, options={"history_days": 15})
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    older = YESTERDAY - timedelta(days=14)
+    assert grdf.calls[0] == ("daily", older, YESTERDAY)
+    rows = await stats(hass, ENERGY)
+    assert len(rows) == 15
+    assert rows[0]["start"] == gas_day_start(older).timestamp()
+    assert [r["sum"] for r in rows] == [100.0 * n for n in range(1, 16)]
+    assert entry.runtime_data.state.backfilled_days == 15
+
+    # Afterwards: back to the 7-day window.
+    grdf.calls.clear()
+    freezer.move_to(NOW + timedelta(minutes=20))
+    await entry.runtime_data.async_refresh()
+    assert grdf.calls[0] == ("daily", YESTERDAY - timedelta(days=6), YESTERDAY)
+
+
+async def test_depth_change_right_after_an_attempt_waits_for_the_cooldown(
+    hass: HomeAssistant, grdf: FakeClient
+) -> None:
+    entry = make_entry()
+    await setup(hass, entry)
+    grdf.calls.clear()
+    hass.config_entries.async_update_entry(entry, options={"history_days": 15})
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert grdf.calls == []  # less than five minutes after the previous fetch
