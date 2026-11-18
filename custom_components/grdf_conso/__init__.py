@@ -5,31 +5,27 @@ Read-only, and built never to lock the GRDF account: see coordinator.py and api/
 
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.storage import Store
 
 from .api import GrdfClient
 from .const import DOMAIN, ISSUE_AUTH_REFUSED
 from .coordinator import (
-    STORAGE_VERSION,
     FetchState,
     GrdfConfigEntry,
     GrdfCoordinator,
     async_create_auth_issue,
-    storage_key,
+    make_store,
 )
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> bool:
-    store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, storage_key(entry.entry_id))
+    store = make_store(hass, entry.entry_id)
     state = FetchState.from_dict(await store.async_load())
     if state.auth_refused:
         # A previous refusal is still pending: nothing is sent to GRDF until the user
@@ -54,4 +50,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> boo
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> None:
-    await Store[dict[str, Any]](hass, STORAGE_VERSION, storage_key(entry.entry_id)).async_remove()
+    await make_store(hass, entry.entry_id).async_remove()

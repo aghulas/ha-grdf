@@ -34,8 +34,12 @@ Response is keyed by PCE; each PCE has a list of `releves`. Fields used per row
 | `qualificationReleve` | "Mesuré", "Estimé"… |
 | `natureReleve` | "Informative Journalier", "Publiée"… |
 
-Notes: the daily endpoint also returns the day before `dateDebut` → filter. Today is never returned;
+Notes: the daily endpoint selects on the **end** of each reading: `dateDebut=D1&dateFin=D2` returns the
+gas days `D1 − 1` … `D2 − 1` (verified on the real service, 2026-11-18). To get the gas days `[start, end]`,
+ask `dateFin = end + 1` and drop the extra day before `start`. Today is never returned;
 yesterday appears D+1 (morning). History available back to at least 2023 for a télérelevé meter.
+Two years requested in 90-day ranges (daily + meteo, 19 calls 1 s apart) went through without any
+HTML glitch on the first real run (2026-11-18, ≈ 27 s).
 
 ## Quirks
 
@@ -71,7 +75,8 @@ password containing `"` or `\`, which would be sent wrong — and count as a ref
   session itself), plus `BIGipServer…` (load balancer) and `TS…` (WAF).
 - `connexion.grdf.fr`: `idx`, `JSESSIONID` (session), `DT` (device token, 2 years), `luf_<n>` (30 days), `ln`.
 
-None of the session cookies carries an expiry: the session lifetime is server-side and **not measured yet**
+None of the session cookies carries an expiry: the session lifetime is server-side and **not measured precisely**
+(a session opened at 06:42 was found expired by 09:05 the same day: expect one login per daily fetch)
 (the MCP connector's `sessions.jsonl` gives real-world durations). Persisting `DT` across logins would make
 Okta see one known device instead of a new one each time — to decide when writing the client.
 

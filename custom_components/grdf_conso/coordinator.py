@@ -60,13 +60,28 @@ from .statistics import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 1
+# 2: the first version missed the last gas day of every requested range; resetting `last_day`
+#    makes the next fetch import the whole history again (idempotent) and fill those holes.
+STORAGE_VERSION = 2
 
 type GrdfConfigEntry = ConfigEntry[GrdfCoordinator]
 
 
 def storage_key(entry_id: str) -> str:
     return f"{DOMAIN}.{entry_id}"
+
+
+class GrdfStore(Store[dict[str, Any]]):
+    async def _async_migrate_func(
+        self, old_major_version: int, old_minor_version: int, old_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        if old_major_version < 2:
+            old_data["last_day"] = {}
+        return old_data
+
+
+def make_store(hass: HomeAssistant, entry_id: str) -> GrdfStore:
+    return GrdfStore(hass, STORAGE_VERSION, storage_key(entry_id))
 
 
 @dataclass(slots=True)
@@ -109,7 +124,7 @@ class FetchState:
 
 async def async_clear_auth_refused(hass: HomeAssistant, entry_id: str) -> None:
     """Called by the reauth flow once new credentials have been accepted by GRDF."""
-    store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, storage_key(entry_id))
+    store = make_store(hass, entry_id)
     state = FetchState.from_dict(await store.async_load())
     state.auth_refused, state.auth_reason = False, None
     await store.async_save(state.as_dict())

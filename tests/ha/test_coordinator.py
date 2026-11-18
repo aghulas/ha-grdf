@@ -267,3 +267,20 @@ def test_fetch_state_round_trip() -> None:
     )
     assert FetchState.from_dict(state.as_dict()) == state
     assert FetchState.from_dict(None) == FetchState()
+
+
+async def test_state_written_by_the_first_version_triggers_a_full_reimport(
+    hass: HomeAssistant, grdf: FakeClient, hass_storage: dict[str, Any]
+) -> None:
+    """Version 1 missed the last day of each requested range: its `last_day` is not trusted."""
+    entry = make_entry()
+    hass_storage[storage_key(entry.entry_id)] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": storage_key(entry.entry_id),
+        "data": {**FetchState(last_day={PCE: YESTERDAY}).as_dict()},
+    }
+    await setup(hass, entry)
+    assert grdf.calls[0] == ("daily", OLDEST, YESTERDAY)  # the whole history, not 7 days
+    assert len(await stats(hass, ENERGY)) == 10
+    assert hass_storage[storage_key(entry.entry_id)]["version"] == 2

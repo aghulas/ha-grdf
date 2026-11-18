@@ -43,7 +43,7 @@ async def test_data_calls(fake: FakeGrdf, client: GrdfClient) -> None:
     ]
     assert fake.queries[-1] == {
         "dateDebut": "2026-01-01",
-        "dateFin": "2026-01-02",
+        "dateFin": "2026-01-03",  # one more day: GRDF excludes the gas day of dateFin
         "pceList[]": PCE,
     }
     assert await client.async_get_published(PCE, date(2025, 1, 1), date(2026, 1, 1)) == []
