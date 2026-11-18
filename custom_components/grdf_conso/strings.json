@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GRDF account",
+        "description": "Sign in with your monespace.grdf.fr account. The password is tried once: if GRDF refuses it, nothing is sent again until you submit this form again.",
+        "data": {
+          "username": "E-mail",
+          "password": "Password"
+        }
+      },
+      "meters": {
+        "title": "Meters",
+        "description": "Select the meters (PCE) to import.",
+        "data": {
+          "pces": "Meters"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to GRDF again",
+        "description": "GRDF refused the stored credentials for {username}, and the integration stopped contacting GRDF. First check that you can sign in on monespace.grdf.fr (unlock the account if needed), then enter the password. It is tried once.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "GRDF refused these credentials. Check them on monespace.grdf.fr before trying again: several refusals lock the account.",
+      "extra_step_required": "GRDF asks for an extra verification step that this integration cannot perform. The password was not sent.",
+      "cannot_connect": "GRDF could not be reached or answered unexpectedly. The password was not refused; try again later.",
+      "no_meter_selected": "Select at least one meter."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "no_meters": "No meter is attached to this account.",
+      "reauth_successful": "Signed in; the integration resumes."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GRDF options",
+        "data": {
+          "history_days": "History to import at first setup",
+          "fetch_hour": "Daily fetch hour (a random delay of up to 30 min is added)",
+          "dju_base": "Base temperature for degree days",
+          "monthly": "Fetch the monthly billing readings"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_refused": {
+      "title": "GRDF refused the sign-in for {title}",
+      "description": "GRDF refused the stored credentials (or asked for an extra verification step). To protect the account from being locked, the integration has stopped contacting GRDF and will not try again by itself.\n\nCheck that you can sign in on monespace.grdf.fr, then re-authenticate the integration from Settings → Devices & services."
+    }
+  }
+}
