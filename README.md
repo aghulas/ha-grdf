@@ -6,8 +6,8 @@ Imports the gas consumption published by GRDF (monespace.grdf.fr) for communicat
 Assistant's long-term statistics and Energy dashboard: daily values per *journée gazière*, billing
 readings, site temperature and degree days. Read-only, for business and residential accounts.
 
-**Status: early.** It has been running on one real Home Assistant since November 2026 (three years of
-daily history imported and checked against GRDF). Not released yet.
+**Status: 0.1.0, first release.** It has been running on one real Home Assistant since November 2026
+(three years of daily history imported and checked against GRDF).
 
 ## Why another GRDF integration
 
@@ -113,8 +113,8 @@ de gaz publiée par GRDF (monespace.grdf.fr) pour les compteurs communicants : v
 gazière, relevés de facturation, température du site et degrés-jours. Lecture seule, pour les comptes
 professionnels et particuliers.
 
-**État : jeune.** Elle tourne sur un vrai Home Assistant depuis novembre 2026 (trois ans d'historique
-journalier importés et recoupés avec GRDF). Pas encore de version publiée.
+**État : 0.1.0, première version publiée.** Elle tourne sur un vrai Home Assistant depuis novembre 2026
+(trois ans d'historique journalier importés et recoupés avec GRDF).
 
 ### Pourquoi une autre intégration GRDF
 

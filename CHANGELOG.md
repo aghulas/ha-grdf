@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-11-18
 
-First working version.
+First release.
 
 - Config flow with meter selection, re-authentication and options (English and French).
 - Lockout-safe sign-in on GRDF's Okta: a password is sent at most once, and only when a password is what
