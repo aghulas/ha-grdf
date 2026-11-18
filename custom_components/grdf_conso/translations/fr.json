@@ -41,7 +41,7 @@
       "init": {
         "title": "Options GRDF",
         "data": {
-          "history_days": "Historique à importer à la première installation",
+          "history_days": "Historique à importer (l'augmenter importe les jours plus anciens)",
           "fetch_hour": "Heure de la collecte quotidienne (un délai aléatoire de 30 min au plus s'ajoute)",
           "dju_base": "Température de base des degrés-jours",
           "monthly": "Récupérer les relevés mensuels de facturation"
