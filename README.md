@@ -28,12 +28,20 @@ provoked on a real account.
 
 Requires Home Assistant 2025.11 or later.
 
-1. Copy `custom_components/grdf_conso` into the `custom_components` folder of your Home Assistant
-   configuration (HACS support will come with the first release).
-2. Restart Home Assistant.
-3. Settings → Devices & services → Add integration → **GRDF consommations**.
-4. Enter the e-mail and password of your monespace.grdf.fr account, then pick the meters (PCE) to import
-   if the account has several.
+**Home Assistant 2026.11 or later — Marketplace:**
+
+1. Settings → Marketplace → **Add from link** (upper right), enter `aghulas/ha-grdf`, then **Add**.
+   Adding a repository by link asks you once to connect a GitHub account.
+2. Open the repository page and select **Install**.
+
+**Earlier versions — HACS:** HACS → Integrations → menu → *Custom repositories*, add
+`https://github.com/aghulas/ha-grdf` as an *Integration*, install it, then restart Home Assistant.
+
+**Manually:** copy `custom_components/grdf_conso` into the `custom_components` folder of your
+configuration, then restart Home Assistant.
+
+Then: Settings → Devices & services → Add integration → **GRDF consommations**, enter the e-mail and
+password of your monespace.grdf.fr account, and pick the meters (PCE) to import if the account has several.
 
 Check first that you can sign in on monespace.grdf.fr with that password. On the first setup the
 history is imported (about one request per second: two years take under a minute).
@@ -127,12 +135,21 @@ pas été provoqué sur un vrai compte.
 
 Home Assistant 2025.11 ou plus récent.
 
-1. Copier `custom_components/grdf_conso` dans le dossier `custom_components` de la configuration de
-   Home Assistant (HACS viendra avec la première version publiée).
-2. Redémarrer Home Assistant.
-3. Paramètres → Appareils et services → Ajouter une intégration → **GRDF consommations**.
-4. Saisir l'e-mail et le mot de passe du compte monespace.grdf.fr, puis choisir les compteurs (PCE) à
-   importer si le compte en a plusieurs.
+**Home Assistant 2026.11 ou plus récent, par le Marketplace :**
+
+1. Paramètres → Marketplace → **Add from link** (en haut à droite), saisir `aghulas/ha-grdf`, puis
+   **Add**. Ajouter un dépôt par lien demande une seule fois de connecter un compte GitHub.
+2. Ouvrir la page du dépôt et choisir **Install**.
+
+**Versions antérieures, par HACS :** HACS → Intégrations → menu → *Dépôts personnalisés*, ajouter
+`https://github.com/aghulas/ha-grdf` comme *Intégration*, l'installer, puis redémarrer Home Assistant.
+
+**À la main :** copier `custom_components/grdf_conso` dans le dossier `custom_components` de la
+configuration, puis redémarrer Home Assistant.
+
+Ensuite : Paramètres → Appareils et services → Ajouter une intégration → **GRDF consommations**, saisir
+l'e-mail et le mot de passe du compte monespace.grdf.fr, et choisir les compteurs (PCE) à importer si le
+compte en a plusieurs.
 
 Vérifiez d'abord que ce mot de passe fonctionne sur monespace.grdf.fr. À la première installation,
 l'historique est importé (environ une requête par seconde : deux ans prennent moins d'une minute).

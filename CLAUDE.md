@@ -8,7 +8,7 @@ temperature / degree days — **without ever locking the user's GRDF account**.
 ## What we are building
 
 - **HA domain**: `grdf_conso` (distinct from the community `gazpar` integration to coexist).
-- **Repo**: `aghulas/ha-grdf` (private at first, HACS Marketplace once hardened). MIT.
+- **Repo**: `aghulas/ha-grdf` (public; installable through the Home Assistant Marketplace, which replaced HACS in HA 2026.11). MIT.
 - Read `docs/requirements.md` (what to build, acceptance criteria) and `docs/api.md` (the GRDF API
   as reverse-engineered for the MCP connector) before writing code.
 
