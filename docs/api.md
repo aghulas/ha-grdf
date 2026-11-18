@@ -70,7 +70,8 @@ PyGazpar also sets a cookie `ln=<e-mail>` on `connexion.grdf.fr` before step 2 (
 User-Agent: the proof of 2026-11-18 used PyGazpar's `Mozilla/5.0 (Windows NT 10.0; Win64; x64)`. The
 integration now sends its own, `Mozilla/5.0 (compatible; ha-grdf/<version>; +<repository URL>)`, so that it
 is recognisable in GRDF's logs and in the account's Okta device list. The login page is served with it
-(checked without credentials); the full sign-in with it is recorded below once observed.
+and the full sign-in followed by the data calls went through unchanged on the first real fetch with it
+(2026-11-18): no extra verification step, no HTML answer.
 
 Build the JSON bodies with a serializer (`json=`), not string formatting: PyGazpar's template breaks on a
 password containing `"` or `\`, which would be sent wrong — and count as a refusal.
