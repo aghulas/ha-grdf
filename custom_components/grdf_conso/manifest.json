@@ -1,0 +1,17 @@
+{
+  "domain": "grdf_conso",
+  "name": "GRDF consommations",
+  "codeowners": [
+    "@aghulas"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "recorder"
+  ],
+  "documentation": "https://github.com/aghulas/ha-grdf",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/aghulas/ha-grdf/issues",
+  "requirements": [],
+  "version": "0.0.1"
+}
