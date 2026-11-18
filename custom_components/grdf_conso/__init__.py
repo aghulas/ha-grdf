@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
@@ -25,6 +25,8 @@ from .coordinator import (
     storage_key,
 )
 
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> bool:
     store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, storage_key(entry.entry_id))
@@ -41,12 +43,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> bool
     client = GrdfClient(session, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
     coordinator = GrdfCoordinator(hass, entry, client, store, state)
     entry.runtime_data = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_start()
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> bool:
-    return True  # the schedule is cancelled by the entry's unload callbacks
+    # The schedule is cancelled by the entry's unload callbacks.
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GrdfConfigEntry) -> None:

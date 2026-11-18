@@ -5,9 +5,13 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.recorder import get_instance
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
@@ -16,6 +20,9 @@ from custom_components.grdf_conso.api import Reading
 from custom_components.grdf_conso.const import CONF_HISTORY_DAYS, CONF_PCES, DOMAIN
 
 PCE = "00000000000001"
+NOW = datetime(2026, 3, 10, 12, 0, tzinfo=UTC)  # 13:00 in Paris, after the fetch hour
+YESTERDAY = date(2026, 3, 9)
+OLDEST = date(2026, 2, 28)  # history depth of 10 days in these tests
 ENTRY_DATA = {
     "username": "compte@exemple.invalid",
     "password": "motdepasse-synth",
@@ -42,6 +49,8 @@ class FakeClient:
         self.energy: dict[date, float | None] = {}
         self.temperature: dict[date, float] = {}
         self.published: list[Reading] = []
+        self.auth_error: Exception | None = None
+        self.factory: Any = None
 
     def fill(self, start: date, end: date, kwh: float = 100.0, temp: float = 8.0) -> None:
         day = start
@@ -103,3 +112,15 @@ async def stats(hass: HomeAssistant, statistic_id: str) -> list[dict[str, Any]]:
         {"state", "sum", "mean"},
     )
     return list(rows.get(statistic_id, []))
+
+
+async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def move(hass: HomeAssistant, freezer: FrozenDateTimeFactory, to: datetime) -> None:
+    freezer.move_to(to)
+    async_fire_time_changed(hass, to)
+    await hass.async_block_till_done(wait_background_tasks=True)

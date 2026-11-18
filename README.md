@@ -1,6 +1,6 @@
 # GRDF consommations — Home Assistant integration
 
-**Status: in development — API client, config flow with reauth and statistics import are written and tested, but nothing has run on a real Home Assistant yet; sensors and diagnostics are still to come.** Unofficial integration, not affiliated with GRDF.
+**Status: in development — the integration is written and tested against fakes (config flow with reauth, statistics import, sensors, diagnostics), but has not run on a real Home Assistant yet.** Unofficial integration, not affiliated with GRDF.
 
 Imports the gas consumption published by GRDF for communicating meters (daily per *journée gazière*,
 monthly billing readings, site temperature and degree days) into Home Assistant's long-term statistics

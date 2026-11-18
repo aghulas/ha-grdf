@@ -54,5 +54,48 @@
       "title": "GRDF a refusé la connexion pour {title}",
       "description": "GRDF a refusé les identifiants enregistrés (ou demandé une étape de vérification supplémentaire). Pour éviter le verrouillage du compte, l'intégration a cessé de contacter GRDF et ne réessaiera pas d'elle-même.\n\nVérifiez que vous pouvez vous connecter sur monespace.grdf.fr, puis ré-authentifiez l'intégration depuis Paramètres → Appareils et services."
     }
+  },
+  "entity": {
+    "sensor": {
+      "last_day_energy": {
+        "name": "Énergie du dernier jour"
+      },
+      "last_day_volume": {
+        "name": "Volume du dernier jour"
+      },
+      "billed_energy": {
+        "name": "Énergie de la dernière période facturée"
+      },
+      "outdoor_temperature": {
+        "name": "Température extérieure"
+      },
+      "last_published_day": {
+        "name": "Dernier jour publié"
+      },
+      "data_quality": {
+        "name": "Qualité de la donnée"
+      },
+      "last_reading": {
+        "name": "Dernier relevé de facturation"
+      }
+    },
+    "binary_sensor": {
+      "problem": {
+        "name": "Problème de connexion"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Actualiser"
+      }
+    }
+  },
+  "exceptions": {
+    "reauth_needed": {
+      "message": "GRDF a refusé les identifiants : ré-authentifiez d'abord l'intégration. Rien n'a été envoyé."
+    },
+    "refresh_too_soon": {
+      "message": "GRDF a été contacté il y a quelques minutes. Patientez avant d'actualiser de nouveau."
+    }
   }
 }
