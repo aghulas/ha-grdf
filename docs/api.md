@@ -67,8 +67,10 @@ same as PyGazpar 1.3.1, reproduced with aiohttp by `scripts/login_probe.py` (one
 
 IDX headers for 2 and 3: `Accept: application/json; okta-version=1.0.0`, `Content-Type: application/json`.
 PyGazpar also sets a cookie `ln=<e-mail>` on `connexion.grdf.fr` before step 2 (kept; not proven necessary).
-User-Agent used for the proof: PyGazpar's `Mozilla/5.0 (Windows NT 10.0; Win64; x64)` — to revisit (an
-identifiable UA would make the integration recognisable in the Okta device list; untested).
+User-Agent: the proof of 2026-11-18 used PyGazpar's `Mozilla/5.0 (Windows NT 10.0; Win64; x64)`. The
+integration now sends its own, `Mozilla/5.0 (compatible; ha-grdf/<version>; +<repository URL>)`, so that it
+is recognisable in GRDF's logs and in the account's Okta device list. The login page is served with it
+(checked without credentials); the full sign-in with it is recorded below once observed.
 
 Build the JSON bodies with a serializer (`json=`), not string formatting: PyGazpar's template breaks on a
 password containing `"` or `\`, which would be sent wrong — and count as a refusal.
