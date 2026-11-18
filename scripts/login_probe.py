@@ -43,8 +43,8 @@ ANSWER_URL = OKTA + "/idp/idx/challenge/answer"
 API = "https://monespace.grdf.fr/api"
 IDX_HEADERS = {"Accept": "application/json; okta-version=1.0.0", "Content-Type": "application/json"}
 API_HEADERS = {"Accept": "application/json", "Referer": "https://monespace.grdf.fr/entreprises/"}
-# Same UA as PyGazpar for this first proof (known to pass); to be revisited for the integration.
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+# Keep in sync with custom_components/grdf_conso/api/const.py.
+USER_AGENT = "Mozilla/5.0 (compatible; ha-grdf/0.1; +https://github.com/aghulas/ha-grdf)"
 STATE_TOKEN = re.compile(r'"stateToken"\s*:\s*"([^"]+)"')
 
 report: dict[str, Any] = {"started": datetime.now(UTC).isoformat(timespec="seconds"), "steps": []}
