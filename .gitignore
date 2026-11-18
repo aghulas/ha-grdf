@@ -16,3 +16,5 @@ captures/
 samples/real/
 *.zip
 *.aes
+# Login probe sentinel (scripts/login_probe.py)
+.probe-refused

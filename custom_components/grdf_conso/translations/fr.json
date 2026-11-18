@@ -1,0 +1,101 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Compte GRDF",
+        "description": "Connectez-vous avec votre compte monespace.grdf.fr. Le mot de passe est essayé une seule fois : si GRDF le refuse, rien n'est renvoyé tant que vous ne validez pas de nouveau ce formulaire.",
+        "data": {
+          "username": "E-mail",
+          "password": "Mot de passe"
+        }
+      },
+      "meters": {
+        "title": "Compteurs",
+        "description": "Choisissez les compteurs (PCE) à importer.",
+        "data": {
+          "pces": "Compteurs"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Se reconnecter à GRDF",
+        "description": "GRDF a refusé les identifiants enregistrés pour {username}, et l'intégration a cessé de contacter GRDF. Vérifiez d'abord que vous pouvez vous connecter sur monespace.grdf.fr (déverrouillez le compte si besoin), puis saisissez le mot de passe. Il est essayé une seule fois.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "GRDF a refusé ces identifiants. Vérifiez-les sur monespace.grdf.fr avant de réessayer : plusieurs refus verrouillent le compte.",
+      "extra_step_required": "GRDF demande une étape de vérification supplémentaire que cette intégration ne sait pas faire. Le mot de passe n'a pas été envoyé.",
+      "cannot_connect": "GRDF est injoignable ou a répondu de façon inattendue. Le mot de passe n'a pas été refusé ; réessayez plus tard.",
+      "no_meter_selected": "Sélectionnez au moins un compteur."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "no_meters": "Aucun compteur n'est rattaché à ce compte.",
+      "reauth_successful": "Connecté ; l'intégration reprend."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options GRDF",
+        "data": {
+          "history_days": "Historique à importer à la première installation",
+          "fetch_hour": "Heure de la collecte quotidienne (un délai aléatoire de 30 min au plus s'ajoute)",
+          "dju_base": "Température de base des degrés-jours",
+          "monthly": "Récupérer les relevés mensuels de facturation"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_refused": {
+      "title": "GRDF a refusé la connexion pour {title}",
+      "description": "GRDF a refusé les identifiants enregistrés (ou demandé une étape de vérification supplémentaire). Pour éviter le verrouillage du compte, l'intégration a cessé de contacter GRDF et ne réessaiera pas d'elle-même.\n\nVérifiez que vous pouvez vous connecter sur monespace.grdf.fr, puis ré-authentifiez l'intégration depuis Paramètres → Appareils et services."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_day_energy": {
+        "name": "Énergie du dernier jour"
+      },
+      "last_day_volume": {
+        "name": "Volume du dernier jour"
+      },
+      "billed_energy": {
+        "name": "Énergie de la dernière période facturée"
+      },
+      "outdoor_temperature": {
+        "name": "Température extérieure"
+      },
+      "last_published_day": {
+        "name": "Dernier jour publié"
+      },
+      "data_quality": {
+        "name": "Qualité de la donnée"
+      },
+      "last_reading": {
+        "name": "Dernier relevé de facturation"
+      }
+    },
+    "binary_sensor": {
+      "problem": {
+        "name": "Problème de connexion"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Actualiser"
+      }
+    }
+  },
+  "exceptions": {
+    "reauth_needed": {
+      "message": "GRDF a refusé les identifiants : ré-authentifiez d'abord l'intégration. Rien n'a été envoyé."
+    },
+    "refresh_too_soon": {
+      "message": "GRDF a été contacté il y a quelques minutes. Patientez avant d'actualiser de nouveau."
+    }
+  }
+}
