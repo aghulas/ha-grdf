@@ -33,8 +33,9 @@ ALLOWED_PATHS: Final = (
     re.compile(rf"/api/e-conso/pce/{PCE_PATTERN}/(?:details|meteo)"),
 )
 
-# Same User-Agent as the supervised proof of 2026-11-18 (docs/api.md §Authentication).
-USER_AGENT: Final = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+# Identifies the integration honestly (it shows in GRDF's logs and in the account's Okta device
+# list) instead of posing as a browser. See docs/api.md §Authentication.
+USER_AGENT: Final = "Mozilla/5.0 (compatible; ha-grdf/0.1; +https://github.com/aghulas/ha-grdf)"
 PAGE_HEADERS: Final = {"User-Agent": USER_AGENT}
 IDX_HEADERS: Final = {
     "User-Agent": USER_AGENT,
