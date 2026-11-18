@@ -46,3 +46,4 @@ MIN_INTERVAL: Final = 1.0  # seconds between two HTTP calls (bursts get HTML ins
 RETRY_DELAY: Final = 3.0  # wait before the single retry of an unexpected answer
 MIN_RELOGIN_INTERVAL: Final = 600.0  # never re-login automatically more often than this
 REQUEST_TIMEOUT: Final = 60.0
+LONG_RANGE_DAYS: Final = 30  # from this length on, a missing last day is asked again alone

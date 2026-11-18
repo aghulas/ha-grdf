@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+from typing import Any
 
 import aiohttp
 import pytest
@@ -186,3 +187,54 @@ async def test_network_error_is_temporary_and_masks_the_pce(
         await client.async_get_temperatures(PCE, date(2026, 1, 1), 1)
     assert PCE not in str(err.value)
     assert "<pce>" in str(err.value)
+
+
+def _grdf_like(omit_last_on_long_ranges: bool, known_until: date) -> Any:
+    """Daily endpoint as observed: gas days dateDebut − 1 … dateFin − 1, and optionally the
+    last one left out when the range is long."""
+
+    def answer(query: dict[str, str]) -> Any:
+        first = date.fromisoformat(query["dateDebut"]) - timedelta(days=1)
+        last = date.fromisoformat(query["dateFin"]) - timedelta(days=1)
+        if omit_last_on_long_ranges and (last - first).days > 30:
+            last -= timedelta(days=1)
+        days = [first + timedelta(days=n) for n in range((last - first).days + 1)]
+        rows = [daily_row(d.isoformat(), 10) for d in days if d <= known_until]
+        return {PCE: {"releves": rows}}
+
+    return answer
+
+
+async def test_daily_range_includes_its_last_day(fake: FakeGrdf, client: GrdfClient) -> None:
+    fake.daily = _grdf_like(False, date(2026, 12, 31))
+    rows = await client.async_get_daily(PCE, date(2026, 1, 1), date(2026, 3, 31))
+    assert [rows[0].gas_day, rows[-1].gas_day] == [date(2026, 1, 1), date(2026, 3, 31)]
+    assert len(rows) == 90
+    assert fake.count(DAILY) == 1
+
+
+async def test_last_day_left_out_of_a_long_range_is_asked_again_once(
+    fake: FakeGrdf, client: GrdfClient
+) -> None:
+    fake.daily = _grdf_like(True, date(2026, 12, 31))
+    rows = await client.async_get_daily(PCE, date(2026, 1, 1), date(2026, 3, 31))
+    assert rows[-1].gas_day == date(2026, 3, 31)
+    assert len(rows) == 90
+    assert fake.count(DAILY) == 2
+    assert fake.queries[-1] == {
+        "dateDebut": "2026-03-31",
+        "dateFin": "2026-04-01",
+        "pceList[]": PCE,
+    }
+
+
+async def test_unpublished_last_day_costs_one_extra_call_on_long_ranges_only(
+    fake: FakeGrdf, client: GrdfClient
+) -> None:
+    fake.daily = _grdf_like(False, date(2026, 3, 30))  # 31 March not published yet
+    rows = await client.async_get_daily(PCE, date(2026, 1, 1), date(2026, 3, 31))
+    assert rows[-1].gas_day == date(2026, 3, 30)
+    assert fake.count(DAILY) == 2
+    # The daily 7-day window never triggers it.
+    await client.async_get_daily(PCE, date(2026, 3, 25), date(2026, 3, 31))
+    assert fake.count(DAILY) == 3

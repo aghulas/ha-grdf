@@ -62,7 +62,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # 2: the first version missed the last gas day of every requested range; resetting `last_day`
 #    makes the next fetch import the whole history again (idempotent) and fill those holes.
-STORAGE_VERSION = 2
+# 3: same again — on long ranges GRDF left out the last day of the oldest chunks.
+STORAGE_VERSION = 3
 
 type GrdfConfigEntry = ConfigEntry[GrdfCoordinator]
 
@@ -75,7 +76,7 @@ class GrdfStore(Store[dict[str, Any]]):
     async def _async_migrate_func(
         self, old_major_version: int, old_minor_version: int, old_data: dict[str, Any]
     ) -> dict[str, Any]:
-        if old_major_version < 2:
+        if old_major_version < STORAGE_VERSION:
             old_data["last_day"] = {}
         return old_data
 

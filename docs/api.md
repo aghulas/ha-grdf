@@ -36,7 +36,11 @@ Response is keyed by PCE; each PCE has a list of `releves`. Fields used per row
 
 Notes: the daily endpoint selects on the **end** of each reading: `dateDebut=D1&dateFin=D2` returns the
 gas days `D1 − 1` … `D2 − 1` (verified on the real service, 2026-11-18). To get the gas days `[start, end]`,
-ask `dateFin = end + 1` and drop the extra day before `start`. Today is never returned;
+ask `dateFin = end + 1` and drop the extra day before `start`.
+
+Seen on the same day: on 91-day ranges starting more than about a year back, the **last gas day was left
+out** although a short range returns it; the three most recent 91-day ranges were complete. Cause unknown.
+The client asks that day again on its own when it is missing from a long range. Today is never returned;
 yesterday appears D+1 (morning). History available back to at least 2023 for a télérelevé meter.
 Two years requested in 90-day ranges (daily + meteo, 19 calls 1 s apart) went through without any
 HTML glitch on the first real run (2026-11-18, ≈ 27 s).
