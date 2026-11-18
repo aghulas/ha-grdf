@@ -30,6 +30,8 @@ KIND_ENERGY = "energy"
 KIND_VOLUME = "volume"
 KIND_TEMPERATURE = "temperature"
 KIND_DJU = "dju"
+KIND_BILLED_ENERGY = "billed_energy"
+KIND_BILLED_VOLUME = "billed_volume"
 
 
 def statistic_id(pce: str, kind: str) -> str:
@@ -65,9 +67,38 @@ async def async_import_sum(
 ) -> int:
     """Import daily amounts (kWh, m³, degree days) as a cumulative statistic. Returns the number
     of rows written."""
+    return await async_import_sum_at(
+        hass,
+        stat_id,
+        name,
+        unit,
+        unit_class,
+        {gas_day_start(day): value for day, value in values.items()},
+    )
+
+
+async def async_import_sum_at(
+    hass: HomeAssistant,
+    stat_id: str,
+    name: str,
+    unit: str,
+    unit_class: str | None,
+    values: dict[datetime, float],
+) -> int:
+    """Import amounts at given instants (truncated to the hour) as a cumulative statistic.
+
+    Existing rows from the first imported instant on are merged with the new ones and their
+    cumulative sums recomputed: older or missing rows can be inserted at any time.
+    """
     if not values:
         return 0
-    new = {gas_day_start(day).timestamp(): value for day, value in values.items()}
+    new = {
+        (moment if moment.tzinfo else moment.replace(tzinfo=PARIS))
+        .astimezone(UTC)
+        .replace(minute=0, second=0, microsecond=0)
+        .timestamp(): value
+        for moment, value in values.items()
+    }
     first = min(new)
     # One row per day: reading the whole series is cheap (≈ 365 rows per year).
     existing: dict[str, list[Any]] = await get_instance(hass).async_add_executor_job(
