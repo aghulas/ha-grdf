@@ -29,6 +29,7 @@ MAX_JITTER_SECONDS: Final = 30 * 60  # random delay added to the daily fetch hou
 CORRECTION_DAYS: Final = 7  # days re-imported at each fetch (late corrections)
 CHUNK_DAYS: Final = 90  # days per request when backfilling (GRDF's limits are not known)
 PUBLISHED_DAYS: Final = 396  # 13 months of billing readings
+MANUAL_REFRESH_COOLDOWN_SECONDS: Final = 300  # between two fetches asked with the button
 MIN_ATTEMPT_GAP_HOURS: Final = 6  # no automatic fetch at startup sooner after an attempt
 
 ISSUE_AUTH_REFUSED: Final = "auth_refused"

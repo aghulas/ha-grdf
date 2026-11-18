@@ -13,14 +13,14 @@ from __future__ import annotations
 import logging
 import random
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature, UnitOfVolume
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.storage import Store
@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_MONTHLY,
     DOMAIN,
     ISSUE_AUTH_REFUSED,
+    MANUAL_REFRESH_COOLDOWN_SECONDS,
     MAX_JITTER_SECONDS,
     MIN_ATTEMPT_GAP_HOURS,
     PARIS,
@@ -77,6 +78,7 @@ class FetchState:
     last_attempt: datetime | None = None
     last_success: datetime | None = None
     last_day: dict[str, date] = field(default_factory=dict)  # per PCE: last gas day imported
+    meters: dict[str, dict[str, Any]] = field(default_factory=dict)  # per PCE: last values shown
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> FetchState:
@@ -91,6 +93,7 @@ class FetchState:
             last_attempt=moment("last_attempt"),
             last_success=moment("last_success"),
             last_day={p: date.fromisoformat(d) for p, d in (data.get("last_day") or {}).items()},
+            meters=dict(data.get("meters") or {}),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -100,6 +103,7 @@ class FetchState:
             "last_attempt": self.last_attempt.isoformat() if self.last_attempt else None,
             "last_success": self.last_success.isoformat() if self.last_success else None,
             "last_day": {p: d.isoformat() for p, d in self.last_day.items()},
+            "meters": self.meters,
         }
 
 
@@ -133,6 +137,46 @@ class MeterData:
     last_temperature: tuple[date, float] | None
 
 
+def _reading_to_dict(reading: Reading | None) -> dict[str, Any] | None:
+    if reading is None:
+        return None
+    out = asdict(reading)
+    for key in ("gas_day", "start", "end"):
+        out[key] = out[key].isoformat() if out[key] else None
+    return out
+
+
+def _reading_from_dict(data: dict[str, Any] | None) -> Reading | None:
+    if not data:
+        return None
+    return Reading(
+        **{
+            **data,
+            "gas_day": date.fromisoformat(data["gas_day"]) if data.get("gas_day") else None,
+            "start": datetime.fromisoformat(data["start"]) if data.get("start") else None,
+            "end": datetime.fromisoformat(data["end"]) if data.get("end") else None,
+        }
+    )
+
+
+def meter_to_dict(meter: MeterData) -> dict[str, Any]:
+    temp = meter.last_temperature
+    return {
+        "last_daily": _reading_to_dict(meter.last_daily),
+        "last_published": _reading_to_dict(meter.last_published),
+        "last_temperature": [temp[0].isoformat(), temp[1]] if temp else None,
+    }
+
+
+def meter_from_dict(data: dict[str, Any]) -> MeterData:
+    temp = data.get("last_temperature")
+    return MeterData(
+        last_daily=_reading_from_dict(data.get("last_daily")),
+        last_published=_reading_from_dict(data.get("last_published")),
+        last_temperature=(date.fromisoformat(temp[0]), float(temp[1])) if temp else None,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GrdfData:
     fetched_at: datetime
@@ -164,6 +208,10 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
         self.state = state
         self._store = store
         self._unsub: CALLBACK_TYPE | None = None
+        # Show the last known values right after a restart, without asking GRDF again.
+        restored = {p: meter_from_dict(m) for p, m in state.meters.items() if p in self.pces}
+        if restored and state.last_success:
+            self.data = GrdfData(fetched_at=state.last_success, meters=restored)
 
     # ---- options ---------------------------------------------------------------------------
 
@@ -222,6 +270,16 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
         if not self.state.auth_refused:
             self._async_schedule_next()
 
+    async def async_manual_refresh(self) -> None:
+        """Refresh asked by the user (button). Never sends a refused password again, and is
+        rate-limited so that an impatient finger cannot hammer GRDF."""
+        if self.state.auth_refused:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="reauth_needed")
+        last = self.state.last_attempt
+        if last and dt_util.now() - last < timedelta(seconds=MANUAL_REFRESH_COOLDOWN_SECONDS):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="refresh_too_soon")
+        await self.async_refresh()
+
     # ---- fetch -----------------------------------------------------------------------------
 
     async def _async_save(self) -> None:
@@ -244,7 +302,8 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
             raise UpdateFailed(str(err)) from err
         finally:
             await self._async_save()
-        self.state.last_success = dt_util.now()
+        self.state.last_success = data.fetched_at
+        self.state.meters = {pce: meter_to_dict(meter) for pce, meter in data.meters.items()}
         await self._async_save()
         return data
 

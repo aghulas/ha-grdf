@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
@@ -12,10 +11,6 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
-from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    async_fire_time_changed,
-)
 
 from custom_components.grdf_conso.api import GrdfAuthError, GrdfTemporaryError
 from custom_components.grdf_conso.const import CONF_MONTHLY, DOMAIN
@@ -26,42 +21,25 @@ from custom_components.grdf_conso.coordinator import (
 )
 from custom_components.grdf_conso.statistics import gas_day_start, statistic_id
 
-from .common import PCE, FakeClient, make_entry, reading, stats
+from .common import (
+    NOW,
+    OLDEST,
+    PCE,
+    YESTERDAY,
+    FakeClient,
+    make_entry,
+    move,
+    reading,
+    setup,
+    stats,
+)
 
-NOW = datetime(2026, 3, 10, 12, 0, tzinfo=UTC)  # 13:00 in Paris, after the fetch hour
-YESTERDAY = date(2026, 3, 9)
-OLDEST = date(2026, 2, 28)  # history depth of 10 days in these tests
 ENERGY = statistic_id(PCE, "energy")
-
-
-@pytest.fixture
-async def grdf(
-    recorder_mock: Any, hass: HomeAssistant, freezer: FrozenDateTimeFactory
-) -> AsyncIterator[FakeClient]:
-    await hass.config.async_set_time_zone("Europe/Paris")
-    freezer.move_to(NOW)
-    client = FakeClient()
-    client.fill(OLDEST - timedelta(days=5), YESTERDAY)
-    with patch("custom_components.grdf_conso.GrdfClient", return_value=client) as factory:
-        client.factory = factory  # type: ignore[attr-defined]
-        yield client
 
 
 def reauth_flows(hass: HomeAssistant) -> list[Any]:
     flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
     return [f for f in flows if f["context"]["source"] == "reauth"]
-
-
-async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
-    entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done(wait_background_tasks=True)
-
-
-async def move(hass: HomeAssistant, freezer: FrozenDateTimeFactory, to: datetime) -> None:
-    freezer.move_to(to)
-    async_fire_time_changed(hass, to)
-    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def test_first_setup_backfills_statistics(hass: HomeAssistant, grdf: FakeClient) -> None:
@@ -163,11 +141,11 @@ async def test_refused_authentication_stops_everything(
     assert len(grdf.calls) == 1
 
     # Nor does a restart: the entry refuses to set up and no client is even built.
-    grdf.factory.reset_mock()  # type: ignore[attr-defined]
+    grdf.factory.reset_mock()
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert entry.state is ConfigEntryState.SETUP_ERROR
-    grdf.factory.assert_not_called()  # type: ignore[attr-defined]
+    grdf.factory.assert_not_called()
     assert len(grdf.calls) == 1
 
     # Only the reauth flow (a user action) lifts the block.
