@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import aiohttp
@@ -217,9 +217,14 @@ class GrdfClient:
         return parse_meters(await self._get(PATH_METERS))
 
     async def async_get_daily(self, pce: str, start: date, end: date) -> list[Reading]:
-        """Daily readings (one per gas day) within [start, end]."""
+        """Daily readings (one per gas day) within [start, end].
+
+        GRDF selects on the end of the reading: `dateDebut`/`dateFin` return the gas days from
+        `dateDebut − 1` to `dateFin − 1`. One more day is asked so that `end` is included; the
+        extra day before `start` is dropped by the parser.
+        """
         self._check_pce(pce)
-        payload = await self._get(PATH_DAILY, self._range(pce, start, end))
+        payload = await self._get(PATH_DAILY, self._range(pce, start, end + timedelta(days=1)))
         return parse_daily(payload, pce, start, end)
 
     async def async_get_published(self, pce: str, start: date, end: date) -> list[Reading]:

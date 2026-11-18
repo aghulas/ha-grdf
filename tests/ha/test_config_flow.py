@@ -11,11 +11,10 @@ from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.storage import Store
 
 from custom_components.grdf_conso.api import GrdfAuthError, GrdfTemporaryError, Meter
 from custom_components.grdf_conso.const import CONF_PCES, DOMAIN
-from custom_components.grdf_conso.coordinator import FetchState, storage_key
+from custom_components.grdf_conso.coordinator import FetchState, make_store, storage_key
 
 from .common import ENTRY_DATA, PCE, make_entry
 
@@ -136,7 +135,7 @@ async def test_reauth_lifts_the_block_only_once_grdf_accepts(
 ) -> None:
     entry = make_entry(unique_id="compte@exemple.invalid")
     entry.add_to_hass(hass)
-    store: Store[dict[str, Any]] = Store(hass, 1, storage_key(entry.entry_id))
+    store = make_store(hass, entry.entry_id)
     await store.async_save(FetchState(auth_refused=True, auth_reason="refused").as_dict())
 
     result = await entry.start_reauth_flow(hass)
