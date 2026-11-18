@@ -12,9 +12,9 @@ Safety (CLAUDE.md rule 1):
   (or an unknown outcome) the script refuses to run again until the owner deletes it by hand;
 - the password is only sent if Okta is actually asking for a password.
 
-Output: a sanitized report (HTTP statuses, JSON key names, Okta message keys, cookie names) printed and
-written to captures/login-probe.json (git-ignored). No password, token, cookie value, e-mail, name or
-PCE number is ever printed or written.
+Output: a sanitized report (HTTP statuses, JSON key names, Okta message keys, cookie names) printed
+and written to captures/login-probe.json (git-ignored). No password, token, cookie value, e-mail,
+name or PCE number is ever printed or written.
 """
 
 from __future__ import annotations
@@ -83,11 +83,24 @@ def idx_summary(body: Any) -> dict[str, Any]:
         v = body.get(k, {}).get("value") if isinstance(body.get(k), dict) else None
         if isinstance(v, dict):
             out[k] = {"type": v.get("type"), "key": v.get("key")}
-    auths = body.get("authenticators", {}).get("value", []) if isinstance(body.get("authenticators"), dict) else []
+    auths = (
+        body.get("authenticators", {}).get("value", [])
+        if isinstance(body.get("authenticators"), dict)
+        else []
+    )
     out["authenticators"] = [a.get("type") for a in auths if isinstance(a, dict)]
-    msgs = body.get("messages", {}).get("value", []) if isinstance(body.get("messages"), dict) else []
-    out["messages"] = [{"class": m.get("class"), "key": (m.get("i18n") or {}).get("key"),
-                        "message": scrub(str(m.get("message", "")))} for m in msgs if isinstance(m, dict)]
+    msgs = (
+        body.get("messages", {}).get("value", []) if isinstance(body.get("messages"), dict) else []
+    )
+    out["messages"] = [
+        {
+            "class": m.get("class"),
+            "key": (m.get("i18n") or {}).get("key"),
+            "message": scrub(str(m.get("message", ""))),
+        }
+        for m in msgs
+        if isinstance(m, dict)
+    ]
     for k in ("errorCode", "errorSummary", "expiresAt", "intent"):  # classic-style error bodies too
         if k in body:
             out[k] = scrub(str(body[k]))
@@ -117,13 +130,17 @@ async def body_json(resp: aiohttp.ClientResponse) -> Any:
 
 async def main() -> int:
     if SENTINEL.exists():
-        print(f"STOP — a previous attempt did not succeed ({SENTINEL.read_text().strip()}).\n"
-              "Check the password in a browser, then delete .probe-refused yourself before trying again.")
+        print(
+            f"STOP — a previous attempt did not succeed ({SENTINEL.read_text().strip()}).\n"
+            "Check the password in a browser, then delete .probe-refused yourself before a new try."
+        )
         return 2
 
-    print("GRDF headless login probe — ONE attempt, no retry.\n"
-          "Before going on: the account must not be locked, and you must be sure of the password\n"
-          "(ideally you have just logged in with it in a browser).")
+    print(
+        "GRDF headless login probe — ONE attempt, no retry.\n"
+        "Before going on: the account must not be locked, and you must be sure of the password\n"
+        "(ideally you have just logged in with it in a browser)."
+    )
     dry = "--dry-run" in sys.argv  # step 1 only: no identifier, no password
     username = "" if dry else input("GRDF username (e-mail): ").strip()  # noqa: ASYNC250 — nothing else runs yet
     password = "" if dry else getpass.getpass("GRDF password (not echoed): ")
@@ -139,70 +156,126 @@ async def main() -> int:
         # 1. Start: monespace redirects to the Okta authorize page, which embeds a stateToken.
         async with s.get(START_URL) as r:
             html = await r.text()
-            step("start", status=r.status, hops=[url_public(h.url) for h in r.history], final=url_public(r.url))
+            step(
+                "start",
+                status=r.status,
+                hops=[url_public(h.url) for h in r.history],
+                final=url_public(r.url),
+            )
         m = STATE_TOKEN.search(html)
         if not m:
             return finish("no stateToken in the login page — flow changed, nothing sent", 1)
         state = m.group(1).encode().decode("unicode_escape")  # \x2D → -
-        step("state_token", length=len(state), jwt_like=state.count(".") >= 2, escapes_left="\\" in state)
+        step(
+            "state_token",
+            length=len(state),
+            jwt_like=state.count(".") >= 2,
+            escapes_left="\\" in state,
+        )
         if dry:
             return finish("dry run — stopped before identify, nothing sent", 0)
 
         # 2. Identify (username only — not a password attempt).
         s.cookie_jar.update_cookies({"ln": username}, URL(OKTA + "/"))
-        async with s.post(IDENTIFY_URL, json={"identifier": username, "stateHandle": state},
-                          headers=IDX_HEADERS) as r:
+        async with s.post(
+            IDENTIFY_URL, json={"identifier": username, "stateHandle": state}, headers=IDX_HEADERS
+        ) as r:
             ident = await body_json(r)
             summary = idx_summary(ident)
             step("identify", status=r.status, **summary)
         if r.status != 200 or not isinstance(ident, dict):
             return finish("identify refused — password NOT sent", 1)
         handle = ident.get("stateHandle")
-        wants_password = ("challenge-authenticator" in summary["remediations"]
-                          and (summary.get("currentAuthenticatorEnrollment") or summary.get("currentAuthenticator")
-                               or {}).get("type") == "password")
+        wants_password = (
+            "challenge-authenticator" in summary["remediations"]
+            and (
+                summary.get("currentAuthenticatorEnrollment")
+                or summary.get("currentAuthenticator")
+                or {}
+            ).get("type")
+            == "password"
+        )
         if not handle or not wants_password:
-            return finish("Okta is not asking for a password here (MFA / other step) — password NOT sent", 1)
+            return finish(
+                "Okta is not asking for a password here (MFA / other step) — password NOT sent", 1
+            )
 
         # 3. Password — the one and only attempt. Sentinel first; removed only on success.
-        SENTINEL.write_text(f"attempt at {datetime.now(UTC).isoformat(timespec='seconds')}, outcome unknown\n")
-        async with s.post(ANSWER_URL, json={"credentials": {"passcode": password}, "stateHandle": handle},
-                          headers=IDX_HEADERS) as r:
+        SENTINEL.write_text(
+            f"attempt at {datetime.now(UTC).isoformat(timespec='seconds')}, outcome unknown\n"
+        )
+        async with s.post(
+            ANSWER_URL,
+            json={"credentials": {"passcode": password}, "stateHandle": handle},
+            headers=IDX_HEADERS,
+        ) as r:
             ans = await body_json(r)
             summary = idx_summary(ans)
             step("password", status=r.status, **summary)
         href = (ans.get("success") or {}).get("href") if isinstance(ans, dict) else None
         if r.status != 200 or not href:
-            keys = ",".join(str(x["key"]) for x in summary.get("messages", [])) or summary.get("errorCode", "?")
-            SENTINEL.write_text(f"refused at {datetime.now(UTC).isoformat(timespec='seconds')}: "
-                                f"HTTP {r.status} {keys}\n")
-            return finish(f"PASSWORD STEP NOT ACCEPTED (HTTP {r.status}, {keys}) — stopped, no retry", 1)
+            keys = ",".join(str(x["key"]) for x in summary.get("messages", [])) or summary.get(
+                "errorCode", "?"
+            )
+            SENTINEL.write_text(
+                f"refused at {datetime.now(UTC).isoformat(timespec='seconds')}: "
+                f"HTTP {r.status} {keys}\n"
+            )
+            return finish(
+                f"PASSWORD STEP NOT ACCEPTED (HTTP {r.status}, {keys}) — stopped, no retry", 1
+            )
 
         # 4. Token redirect back to monespace (sets the session cookies).
         async with s.get(href) as r:
             await r.read()
-            step("redirect", status=r.status, hops=[url_public(h.url) for h in r.history], final=url_public(r.url))
+            step(
+                "redirect",
+                status=r.status,
+                hops=[url_public(h.url) for h in r.history],
+                final=url_public(r.url),
+            )
         SENTINEL.unlink(missing_ok=True)
 
         # 5. Session check + PCE list, ≥ 1 s apart, no redirects (a 30x means "not logged in").
-        for name, path in (("whoami", "/e-connexion/users/whoami"), ("accreditations", "/e-accred/accreditations")):
+        for name, path in (
+            ("whoami", "/e-connexion/users/whoami"),
+            ("accreditations", "/e-accred/accreditations"),
+        ):
             await asyncio.sleep(1.2)
             async with s.get(API + path, headers=API_HEADERS, allow_redirects=False) as r:
                 j = await body_json(r)
-                step(name, status=r.status, content_type=r.headers.get("Content-Type", ""),
-                     json=j is not None, shape=shape(j) if j is not None else None)
+                step(
+                    name,
+                    status=r.status,
+                    content_type=r.headers.get("Content-Type", ""),
+                    json=j is not None,
+                    shape=shape(j) if j is not None else None,
+                )
 
         now = time.time()
         report["cookies"] = sorted(
-            ({"name": c.key, "domain": c["domain"], "path": c["path"], "secure": bool(c["secure"]),
-              "httponly": bool(c["httponly"]), "max_age": c["max-age"] or None, "expires": c["expires"] or None}
-             for c in s.cookie_jar), key=lambda c: (c["domain"], c["name"]))
+            (
+                {
+                    "name": c.key,
+                    "domain": c["domain"],
+                    "path": c["path"],
+                    "secure": bool(c["secure"]),
+                    "httponly": bool(c["httponly"]),
+                    "max_age": c["max-age"] or None,
+                    "expires": c["expires"] or None,
+                }
+                for c in s.cookie_jar
+            ),
+            key=lambda c: (c["domain"], c["name"]),
+        )
         print(f"cookies: {[(c['domain'], c['name']) for c in report['cookies']]} at t={int(now)}")
 
     checks = [st for st in report["steps"] if st["step"] in ("whoami", "accreditations")]
     ok = all(st.get("status") == 200 and st.get("json") for st in checks)
-    return finish("LOGIN OK — session works" if ok else "login accepted but API check failed (see steps)",
-                  0 if ok else 1)
+    return finish(
+        "LOGIN OK — session works" if ok else "login accepted but API check failed (see steps)",
+        0 if ok else 1,
+    )
 
 
 if __name__ == "__main__":
