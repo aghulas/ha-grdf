@@ -28,7 +28,8 @@ GAS_DAY_START_HOUR: Final = 6
 MAX_JITTER_SECONDS: Final = 30 * 60  # random delay added to the daily fetch hour
 CORRECTION_DAYS: Final = 7  # days re-imported at each fetch (late corrections)
 CHUNK_DAYS: Final = 90  # days per request when backfilling (GRDF's limits are not known)
-PUBLISHED_DAYS: Final = 396  # 13 months of billing readings
+PUBLISHED_DAYS: Final = 396  # 13 months of billing readings, at each fetch
+PUBLISHED_HISTORY_DAYS: Final = 1830  # 5 years, when backfilling (what GRDF keeps)
 MANUAL_REFRESH_COOLDOWN_SECONDS: Final = 300  # between two fetches asked with the button
 MIN_ATTEMPT_GAP_HOURS: Final = 6  # no automatic fetch at startup sooner after an attempt
 
