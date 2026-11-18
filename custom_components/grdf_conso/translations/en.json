@@ -41,7 +41,7 @@
       "init": {
         "title": "GRDF options",
         "data": {
-          "history_days": "History to import at first setup",
+          "history_days": "History to import (raising it imports the older days)",
           "fetch_hour": "Daily fetch hour (a random delay of up to 30 min is added)",
           "dju_base": "Base temperature for degree days",
           "monthly": "Fetch the monthly billing readings"

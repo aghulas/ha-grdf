@@ -31,6 +31,7 @@ async def async_get_config_entry_diagnostics(
         "state": {
             "auth_refused": state.auth_refused,
             "auth_reason": state.auth_reason,
+            "backfilled_days": state.backfilled_days,
             "last_attempt": state.last_attempt.isoformat() if state.last_attempt else None,
             "last_success": state.last_success.isoformat() if state.last_success else None,
             "last_day": {

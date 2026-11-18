@@ -47,14 +47,18 @@ from .const import (
     MIN_ATTEMPT_GAP_HOURS,
     PARIS,
     PUBLISHED_DAYS,
+    PUBLISHED_HISTORY_DAYS,
 )
 from .statistics import (
+    KIND_BILLED_ENERGY,
+    KIND_BILLED_VOLUME,
     KIND_DJU,
     KIND_ENERGY,
     KIND_TEMPERATURE,
     KIND_VOLUME,
     async_import_mean,
     async_import_sum,
+    async_import_sum_at,
     statistic_id,
 )
 
@@ -95,6 +99,7 @@ class FetchState:
     last_success: datetime | None = None
     last_day: dict[str, date] = field(default_factory=dict)  # per PCE: last gas day imported
     meters: dict[str, dict[str, Any]] = field(default_factory=dict)  # per PCE: last values shown
+    backfilled_days: int = 0  # history depth covered by the last complete import
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> FetchState:
@@ -110,6 +115,7 @@ class FetchState:
             last_success=moment("last_success"),
             last_day={p: date.fromisoformat(d) for p, d in (data.get("last_day") or {}).items()},
             meters=dict(data.get("meters") or {}),
+            backfilled_days=int(data.get("backfilled_days") or 0),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -120,6 +126,7 @@ class FetchState:
             "last_success": self.last_success.isoformat() if self.last_success else None,
             "last_day": {p: d.isoformat() for p, d in self.last_day.items()},
             "meters": self.meters,
+            "backfilled_days": self.backfilled_days,
         }
 
 
@@ -250,12 +257,28 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
                 self.hass, self.async_refresh(), f"{DOMAIN} startup fetch"
             )
 
+    @property
+    def _history_days(self) -> int:
+        return int(self._option(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS))
+
+    @property
+    def _backfill_pending(self) -> bool:
+        """The history depth was never imported in full, or the user has just increased it."""
+        return self._history_days > self.state.backfilled_days
+
     def _startup_fetch_needed(self) -> bool:
         now = dt_util.now()
-        if self.state.last_attempt and now - self.state.last_attempt < timedelta(
-            hours=MIN_ATTEMPT_GAP_HOURS
-        ):
+        # A deeper history asked in the options is a user action: it only waits for the
+        # manual-refresh cooldown, not for the next day.
+        gap = (
+            timedelta(seconds=MANUAL_REFRESH_COOLDOWN_SECONDS)
+            if self._backfill_pending and self.state.backfilled_days
+            else timedelta(hours=MIN_ATTEMPT_GAP_HOURS)
+        )
+        if self.state.last_attempt and now - self.state.last_attempt < gap:
             return False
+        if self._backfill_pending:
+            return True
         # The day GRDF should have published by now: yesterday once the fetch hour has passed.
         published = now.date() - timedelta(days=1 if now.hour >= self._fetch_hour else 2)
         return any(self.state.last_day.get(pce, date.min) < published for pce in self.pces)
@@ -325,21 +348,23 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
 
     async def _async_fetch(self) -> GrdfData:
         end = dt_util.now(PARIS).date() - timedelta(days=1)  # GRDF publishes D+1
-        depth = int(self._option(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS))
+        depth = self._history_days
+        backfill = self._backfill_pending
         oldest = end - timedelta(days=depth - 1)
         meters: dict[str, MeterData] = {}
         for pce, alias in self.pces.items():
             last = self.state.last_day.get(pce)
             start = oldest
-            if last is not None:
+            if last is not None and not backfill:
                 # Late corrections, plus whatever was missed while HA was off.
                 recent = end - timedelta(days=CORRECTION_DAYS - 1)
                 start = max(oldest, min(recent, last + timedelta(days=1)))
-            meters[pce] = await self._async_fetch_meter(pce, alias, start, end)
+            meters[pce] = await self._async_fetch_meter(pce, alias, start, end, backfill)
+        self.state.backfilled_days = max(self.state.backfilled_days, depth)
         return GrdfData(fetched_at=dt_util.now(), meters=meters)
 
     async def _async_fetch_meter(
-        self, pce: str, alias: str | None, start: date, end: date
+        self, pce: str, alias: str | None, start: date, end: date, backfill: bool
     ) -> MeterData:
         readings: list[Reading] = []
         temperatures: dict[date, float] = {}
@@ -350,8 +375,9 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
             temperatures.update({d: t for d, t in chunk.items() if first <= d <= last})
         published: list[Reading] = []
         if self._option(CONF_MONTHLY, DEFAULT_MONTHLY):
+            published_days = PUBLISHED_HISTORY_DAYS if backfill else PUBLISHED_DAYS
             published = await self.client.async_get_published(
-                pce, end - timedelta(days=PUBLISHED_DAYS), end
+                pce, end - timedelta(days=published_days), end
             )
 
         label = f"GRDF {alias}" if alias else "GRDF"
@@ -391,6 +417,25 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
             "°C·d",
             None,
             degree_days(temperatures, base),
+        )
+
+        # Billing readings: one row per published period, at the start of the period. Kept apart
+        # from the daily series (a whole month on one day would distort the daily charts).
+        await async_import_sum_at(
+            self.hass,
+            statistic_id(pce, KIND_BILLED_ENERGY),
+            f"{label} billed energy",
+            UnitOfEnergy.KILO_WATT_HOUR,
+            "energy",
+            {r.start: r.energy_kwh for r in published if r.start and r.energy_kwh is not None},
+        )
+        await async_import_sum_at(
+            self.hass,
+            statistic_id(pce, KIND_BILLED_VOLUME),
+            f"{label} billed volume",
+            UnitOfVolume.CUBIC_METERS,
+            "volume",
+            {r.start: r.volume_m3 for r in published if r.start and r.volume_m3 is not None},
         )
 
         days_seen = [r.gas_day for r in readings if r.gas_day]
