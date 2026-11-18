@@ -43,12 +43,61 @@ yesterday appears D+1 (morning). History available back to at least 2023 for a t
   3 s, then `whoami` to tell "glitch" from "logged out".
 - GRDF sometimes serves a full-page **"Erreur : 403 — problème technique"** (WAF / incident): back off.
 
-## Authentication (to do in this project)
+## Authentication — headless login (proven 2026-11-18, supervised, one attempt)
 
-- The MCP connector does **not** log in programmatically: the user logs in in a real Chrome profile,
-  the connector reuses the cookies. HA cannot do that.
-- GRDF uses **Okta** (`connexion.grdf.fr`, mails from `noreply@connexion.grdf.fr`). PyGazpar logs in
-  headlessly (Okta authn API → session → `monespace.grdf.fr`). Document the exact flow here after the
-  first supervised test, including the error codes for "wrong password", "locked out", "MFA".
-- Okta locks the account after several refused passwords; unlock is by e-mail link. **One attempt per
-  user action**, never a loop (CLAUDE.md rule 1).
+GRDF uses **Okta Identity Engine** (IDX, sign-in widget 7.19.6) on `connexion.grdf.fr`. The MCP connector
+does not log in programmatically (real Chrome + cookies); the integration does, with the flow below —
+same as PyGazpar 1.3.1, reproduced with aiohttp by `scripts/login_probe.py` (one cookie jar for all steps).
+
+| # | Request | Observed answer |
+|---|---|---|
+| 1 | `GET https://monespace.grdf.fr/` (redirects followed) | 200, lands on `connexion.grdf.fr/oauth2/<authServerId>/v1/authorize?response_type=code&scope=openid profile email&client_id=…&state=…&nonce=…&redirect_uri=https://monespace.grdf.fr/_codexch&by_pass_okta=1&capp=meg`. The HTML embeds `"stateToken":"…"` (JWT-like, ~4.4 kB, JS-escaped: `\x2D` → `-`). |
+| 2 | `POST /idp/idx/identify` — JSON `{"identifier": <e-mail>, "stateHandle": <stateToken>}` | 200. `remediation.value[].name` = `challenge-authenticator`, `select-authenticator-authenticate`; `currentAuthenticatorEnrollment.value.type` = `password` (`key` = `okta_password`); `authenticators` = password only; new `stateHandle`; `expiresAt` ≈ now + 5 min. **Not a password attempt.** |
+| 3 | `POST /idp/idx/challenge/answer` — JSON `{"credentials": {"passcode": <password>}, "stateHandle": <handle from 2>}` | 200 with `success.href`, no `remediation`, no `messages`. |
+| 4 | `GET <success.href>` (redirects followed) | `connexion.grdf.fr/login/token/redirect?stateToken=…` → `monespace.grdf.fr/_codexch?code=…&state=…` → 200 on monespace. |
+| 5 | `GET /api/e-connexion/users/whoami`, then `/api/e-accred/accreditations` | 200 `application/json` — the session works. |
+
+IDX headers for 2 and 3: `Accept: application/json; okta-version=1.0.0`, `Content-Type: application/json`.
+PyGazpar also sets a cookie `ln=<e-mail>` on `connexion.grdf.fr` before step 2 (kept; not proven necessary).
+User-Agent used for the proof: PyGazpar's `Mozilla/5.0 (Windows NT 10.0; Win64; x64)` — to revisit (an
+identifiable UA would make the integration recognisable in the Okta device list; untested).
+
+Build the JSON bodies with a serializer (`json=`), not string formatting: PyGazpar's template breaks on a
+password containing `"` or `\`, which would be sent wrong — and count as a refusal.
+
+### Cookies after login (names only)
+
+- `monespace.grdf.fr`: `auth_token`, `auth_nonce`, `auth_redir` (session cookies, Secure, HttpOnly — the
+  session itself), plus `BIGipServer…` (load balancer) and `TS…` (WAF).
+- `connexion.grdf.fr`: `idx`, `JSESSIONID` (session), `DT` (device token, 2 years), `luf_<n>` (30 days), `ln`.
+
+None of the session cookies carries an expiry: the session lifetime is server-side and **not measured yet**
+(the MCP connector's `sessions.jsonl` gives real-world durations). Persisting `DT` across logins would make
+Okta see one known device instead of a new one each time — to decide when writing the client.
+
+### Rules for the client (CLAUDE.md rule 1)
+
+- Send the password **only if** step 2 answers 200 with `challenge-authenticator` and a current authenticator
+  of type `password`. Anything else (MFA enrolment, other authenticator, non-200) → auth failure, **password
+  not sent**.
+- Step 3 without `success.href` — whatever the status or body — is a **refusal**: stop polling, Repairs
+  issue, reauth flow. Never a second POST to `challenge/answer` without a user action.
+- Steps 1, 2, 4, 5 carry no password; a network error there is retryable (next day). A network error *during*
+  step 3 has an unknown outcome → treat as a refusal (do not resend).
+
+### Not observed yet (only the success path was exercised — deliberately)
+
+Refusal shapes are **not verified** against GRDF. Per Okta IDX documentation, expect on step 3 a 401/400 with
+`messages.value[]` (`class: "ERROR"`, `i18n.key` such as `errors.E0000004` for invalid credentials); a locked
+account may be reported the same way as a wrong password, or on step 2. The client must not depend on these
+keys to decide (see rule above); log the `i18n.key` only, for diagnostics. Do not provoke a refusal on a real
+account to find out — fixtures for these cases are synthetic.
+
+## Response shape — `whoami` and `accreditations` (key names only)
+
+- `whoami`: object with `id`, `first_name`, `last_name`, `email`, `profile`, `status`, `espace{…}`,
+  `adresse{…}`, `raison_sociale`, phones, consent flags… — **all personal: redact entirely in diagnostics.**
+- `accreditations`: list of objects; useful keys `pce`, `alias`, `teleReleve` (bool), `frequenceReleve`,
+  `etat`, `role`, `dateMes`, `parcours`, `access[]`; personal: `nomTitulaire`, `codePostal`,
+  `raisonSociale`, `denominationClient`, `adresseEmailClient`, `telephoneClient`, `idObject`,
+  `idAccreditation`.
