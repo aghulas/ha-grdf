@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import aiohttp
@@ -63,6 +63,7 @@ class FakeGrdf:
         self.html_glitches = 0
         self.waf = False
         self.server_error = False
+        self.daily: Callable[[dict[str, str]], Any] | None = None  # query → daily payload
         self.payloads: dict[str, Any] = {
             "/api/e-connexion/users/whoami": {"id": 1},
             "/api/e-accred/accreditations": METERS,
@@ -106,6 +107,8 @@ class FakeGrdf:
             raise web.HTTPFound(self.portal + "/")
         if self.server_error:
             return web.json_response({"message": "boom"}, status=500)
+        if self.daily is not None and request.path.endswith("/informatives"):
+            return web.json_response(self.daily(dict(request.query)))
         return web.json_response(self.payloads.get(request.path, {}))
 
     # ---- okta ----

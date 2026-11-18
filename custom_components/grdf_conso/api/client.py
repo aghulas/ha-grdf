@@ -22,6 +22,7 @@ import aiohttp
 from .auth import async_login
 from .const import (
     ALLOWED_PATHS,
+    LONG_RANGE_DAYS,
     MIN_INTERVAL,
     MIN_RELOGIN_INTERVAL,
     PATH_DAILY,
@@ -222,10 +223,19 @@ class GrdfClient:
         GRDF selects on the end of the reading: `dateDebut`/`dateFin` return the gas days from
         `dateDebut − 1` to `dateFin − 1`. One more day is asked so that `end` is included; the
         extra day before `start` is dropped by the parser.
+
+        On long ranges reaching far back, GRDF has been seen to leave out the last gas day
+        although it serves it on a short range (cause unknown): when `end` is missing from a
+        long range, it is asked again on its own — one extra call, never more.
         """
         self._check_pce(pce)
-        payload = await self._get(PATH_DAILY, self._range(pce, start, end + timedelta(days=1)))
-        return parse_daily(payload, pce, start, end)
+        one_day = timedelta(days=1)
+        payload = await self._get(PATH_DAILY, self._range(pce, start, end + one_day))
+        readings = parse_daily(payload, pce, start, end)
+        if (end - start).days >= LONG_RANGE_DAYS and not any(r.gas_day == end for r in readings):
+            payload = await self._get(PATH_DAILY, self._range(pce, end, end + one_day))
+            readings += parse_daily(payload, pce, end, end)
+        return readings
 
     async def async_get_published(self, pce: str, start: date, end: date) -> list[Reading]:
         """Published (billing) readings for the period."""

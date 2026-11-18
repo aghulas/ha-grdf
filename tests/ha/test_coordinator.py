@@ -283,4 +283,4 @@ async def test_state_written_by_the_first_version_triggers_a_full_reimport(
     await setup(hass, entry)
     assert grdf.calls[0] == ("daily", OLDEST, YESTERDAY)  # the whole history, not 7 days
     assert len(await stats(hass, ENERGY)) == 10
-    assert hass_storage[storage_key(entry.entry_id)]["version"] == 2
+    assert hass_storage[storage_key(entry.entry_id)]["version"] == 3
