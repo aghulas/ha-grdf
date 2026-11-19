@@ -32,5 +32,6 @@ PUBLISHED_DAYS: Final = 396  # 13 months of billing readings, at each fetch
 PUBLISHED_HISTORY_DAYS: Final = 1830  # 5 years, when backfilling (what GRDF keeps)
 MANUAL_REFRESH_COOLDOWN_SECONDS: Final = 300  # between two fetches asked with the button
 MIN_ATTEMPT_GAP_HOURS: Final = 6  # no automatic fetch at startup sooner after an attempt
+INTERRUPTED_RETRY_MINUTES: Final = 15  # …unless that attempt was cut short (HA restarted)
 
 ISSUE_AUTH_REFUSED: Final = "auth_refused"

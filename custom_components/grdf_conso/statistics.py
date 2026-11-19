@@ -7,7 +7,7 @@ recomputed, so a late correction or a hole filled afterwards never leaves an inc
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.components.recorder.models import (
@@ -36,6 +36,23 @@ KIND_BILLED_VOLUME = "billed_volume"
 
 def statistic_id(pce: str, kind: str) -> str:
     return f"{DOMAIN}:{pce.lower()}_{kind}"
+
+
+async def async_has_row(hass: HomeAssistant, stat_id: str, day: date) -> bool:
+    """Whether the statistic has a row for the gas day `day` (or the two following days, in
+    case GRDF had no value that day). Cheap: reads at most three rows."""
+    start = gas_day_start(day)
+    rows: dict[str, list[Any]] = await get_instance(hass).async_add_executor_job(
+        statistics_during_period,
+        hass,
+        start,
+        gas_day_start(day + timedelta(days=3)),
+        {stat_id},
+        "hour",
+        None,
+        {"state"},
+    )
+    return bool(rows.get(stat_id))
 
 
 def gas_day_start(day: date) -> datetime:
