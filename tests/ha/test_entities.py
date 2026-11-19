@@ -110,6 +110,7 @@ async def test_failed_fetch_raises_the_problem_and_keeps_the_values(
     problem = state_of(hass, "binary_sensor", "problem")
     assert problem.state == "on"
     assert problem.attributes["reauthentication_needed"] is False
+    assert problem.attributes["last_error"] == "HTTP 500"
     assert float(state_of(hass, "sensor", "last_day_energy").state) == 100.0
 
 
@@ -184,6 +185,7 @@ async def test_diagnostics_report_a_refusal(hass: HomeAssistant, grdf: FakeClien
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["state"]["auth_refused"] is True
     assert diag["state"]["auth_reason"] == "refused"
+    assert diag["state"]["last_error"].startswith("GRDF authentication failed: refused")
     assert diag["coordinator"]["okta_keys"] == ["errors.E0000004"]
     assert diag["coordinator"]["okta_status"] == 401
     assert diag["meters"] == {}

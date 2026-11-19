@@ -28,6 +28,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import GrdfAuthError, GrdfClient, GrdfTemporaryError, Reading, degree_days
+from .api.const import PCE_RE
 from .const import (
     CHUNK_DAYS,
     CONF_DJU_BASE,
@@ -108,6 +109,8 @@ class FetchState:
     first_day: dict[str, date] = field(default_factory=dict)  # per PCE: oldest gas day imported
     # "running" while a fetch is in progress: still "running" at startup means it was cut short.
     last_result: str | None = None
+    last_error: str | None = None  # message of the last failed fetch (no PCE, no credentials)
+    last_error_at: datetime | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> FetchState:
@@ -126,6 +129,8 @@ class FetchState:
             backfilled_days=int(data.get("backfilled_days") or 0),
             first_day={p: date.fromisoformat(d) for p, d in (data.get("first_day") or {}).items()},
             last_result=data.get("last_result"),
+            last_error=data.get("last_error"),
+            last_error_at=moment("last_error_at"),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -139,6 +144,8 @@ class FetchState:
             "backfilled_days": self.backfilled_days,
             "first_day": {p: d.isoformat() for p, d in self.first_day.items()},
             "last_result": self.last_result,
+            "last_error": self.last_error,
+            "last_error_at": self.last_error_at.isoformat() if self.last_error_at else None,
         }
 
 
@@ -349,13 +356,21 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
         except GrdfAuthError as err:
             self.state.auth_refused, self.state.auth_reason = True, err.reason
             self.state.last_result = "auth_refused"
+            self._record_error(str(err))
             await self._async_save()
             self._async_cancel()
             async_create_auth_issue(self.hass, self.config_entry)
             raise ConfigEntryAuthFailed(str(err)) from err
         except GrdfTemporaryError as err:
             self.state.last_result = "failed"
+            self._record_error(str(err))
             raise UpdateFailed(str(err)) from err
+        except Exception as err:
+            # A bug or an unexpected answer: recorded too, then left to the coordinator, which
+            # logs the traceback. Not an authentication refusal: the next fetch happens as usual.
+            self.state.last_result = "failed"
+            self._record_error(f"unexpected {type(err).__name__}: {err}")
+            raise
         finally:
             await self._async_save()
         self.state.last_success = data.fetched_at
@@ -380,6 +395,13 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
             meters[pce] = await self._async_fetch_meter(pce, alias, start, end, backfill)
         self.state.backfilled_days = max(self.state.backfilled_days, depth)
         return GrdfData(fetched_at=dt_util.now(), meters=meters)
+
+    def _record_error(self, message: str) -> None:
+        """Keep the reason of the last failure for the diagnostics, without personal data."""
+        for pce in self.pces:
+            message = message.replace(pce, "<pce>")
+        self.state.last_error = PCE_RE.sub("<pce>", message)[:300]
+        self.state.last_error_at = dt_util.now()
 
     async def _history_lost(self, pce: str) -> bool:
         """The oldest imported day is no longer in the statistics: the recorder database was
