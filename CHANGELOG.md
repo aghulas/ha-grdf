@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 — 2026-11-19
+
+Found on the pilot installation the day after 0.1.0:
+
+- **History lost with the recorder database is imported again.** Home Assistant recreates an empty
+  database when it finds its own corrupt, which wipes every long-term statistic. The integration now
+  remembers the oldest gas day it imported and, at each fetch, checks that it is still in the
+  statistics; if not, it imports the whole history again (daily and billing readings).
+- **A fetch cut short by a restart is retried at startup** after 15 minutes, instead of waiting six
+  hours or the next day. A fetch that ended — even in failure — still waits.
+- Updating from 0.1.0 runs one full import, to record the oldest day imported.
+- Diagnostics show the outcome of the last fetch.
+
 ## 0.1.0 — 2026-11-18
 
 First release.

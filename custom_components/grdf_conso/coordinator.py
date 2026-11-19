@@ -41,6 +41,7 @@ from .const import (
     DEFAULT_HISTORY_DAYS,
     DEFAULT_MONTHLY,
     DOMAIN,
+    INTERRUPTED_RETRY_MINUTES,
     ISSUE_AUTH_REFUSED,
     MANUAL_REFRESH_COOLDOWN_SECONDS,
     MAX_JITTER_SECONDS,
@@ -56,6 +57,7 @@ from .statistics import (
     KIND_ENERGY,
     KIND_TEMPERATURE,
     KIND_VOLUME,
+    async_has_row,
     async_import_mean,
     async_import_sum,
     async_import_sum_at,
@@ -67,7 +69,9 @@ _LOGGER = logging.getLogger(__name__)
 # 2: the first version missed the last gas day of every requested range; resetting `last_day`
 #    makes the next fetch import the whole history again (idempotent) and fill those holes.
 # 3: same again — on long ranges GRDF left out the last day of the oldest chunks.
-STORAGE_VERSION = 3
+# 4: `backfilled_days` reset — versions up to 0.1.0 did not record the oldest imported day, so a
+#    history lost with the recorder database could not be detected; one full import records it.
+STORAGE_VERSION = 4
 
 type GrdfConfigEntry = ConfigEntry[GrdfCoordinator]
 
@@ -82,6 +86,7 @@ class GrdfStore(Store[dict[str, Any]]):
     ) -> dict[str, Any]:
         if old_major_version < STORAGE_VERSION:
             old_data["last_day"] = {}
+            old_data["backfilled_days"] = 0
         return old_data
 
 
@@ -100,6 +105,9 @@ class FetchState:
     last_day: dict[str, date] = field(default_factory=dict)  # per PCE: last gas day imported
     meters: dict[str, dict[str, Any]] = field(default_factory=dict)  # per PCE: last values shown
     backfilled_days: int = 0  # history depth covered by the last complete import
+    first_day: dict[str, date] = field(default_factory=dict)  # per PCE: oldest gas day imported
+    # "running" while a fetch is in progress: still "running" at startup means it was cut short.
+    last_result: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> FetchState:
@@ -116,6 +124,8 @@ class FetchState:
             last_day={p: date.fromisoformat(d) for p, d in (data.get("last_day") or {}).items()},
             meters=dict(data.get("meters") or {}),
             backfilled_days=int(data.get("backfilled_days") or 0),
+            first_day={p: date.fromisoformat(d) for p, d in (data.get("first_day") or {}).items()},
+            last_result=data.get("last_result"),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -127,6 +137,8 @@ class FetchState:
             "last_day": {p: d.isoformat() for p, d in self.last_day.items()},
             "meters": self.meters,
             "backfilled_days": self.backfilled_days,
+            "first_day": {p: d.isoformat() for p, d in self.first_day.items()},
+            "last_result": self.last_result,
         }
 
 
@@ -269,12 +281,14 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
     def _startup_fetch_needed(self) -> bool:
         now = dt_util.now()
         # A deeper history asked in the options is a user action: it only waits for the
-        # manual-refresh cooldown, not for the next day.
-        gap = (
-            timedelta(seconds=MANUAL_REFRESH_COOLDOWN_SECONDS)
-            if self._backfill_pending and self.state.backfilled_days
-            else timedelta(hours=MIN_ATTEMPT_GAP_HOURS)
-        )
+        # manual-refresh cooldown, not for the next day. A fetch cut short by a restart is
+        # retried soon; a fetch that ended (even in failure) waits for hours.
+        if self._backfill_pending and self.state.backfilled_days:
+            gap = timedelta(seconds=MANUAL_REFRESH_COOLDOWN_SECONDS)
+        elif self.state.last_result == "running":
+            gap = timedelta(minutes=INTERRUPTED_RETRY_MINUTES)
+        else:
+            gap = timedelta(hours=MIN_ATTEMPT_GAP_HOURS)
         if self.state.last_attempt and now - self.state.last_attempt < gap:
             return False
         if self._backfill_pending:
@@ -328,20 +342,24 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
         if self.state.auth_refused:
             raise ConfigEntryAuthFailed("GRDF refused the credentials; re-authentication needed")
         self.state.last_attempt = dt_util.now()
+        self.state.last_result = "running"
         await self._async_save()
         try:
             data = await self._async_fetch()
         except GrdfAuthError as err:
             self.state.auth_refused, self.state.auth_reason = True, err.reason
+            self.state.last_result = "auth_refused"
             await self._async_save()
             self._async_cancel()
             async_create_auth_issue(self.hass, self.config_entry)
             raise ConfigEntryAuthFailed(str(err)) from err
         except GrdfTemporaryError as err:
+            self.state.last_result = "failed"
             raise UpdateFailed(str(err)) from err
         finally:
             await self._async_save()
         self.state.last_success = data.fetched_at
+        self.state.last_result = "ok"
         self.state.meters = {pce: meter_to_dict(meter) for pce, meter in data.meters.items()}
         await self._async_save()
         return data
@@ -349,10 +367,10 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
     async def _async_fetch(self) -> GrdfData:
         end = dt_util.now(PARIS).date() - timedelta(days=1)  # GRDF publishes D+1
         depth = self._history_days
-        backfill = self._backfill_pending
         oldest = end - timedelta(days=depth - 1)
         meters: dict[str, MeterData] = {}
         for pce, alias in self.pces.items():
+            backfill = self._backfill_pending or await self._history_lost(pce)
             last = self.state.last_day.get(pce)
             start = oldest
             if last is not None and not backfill:
@@ -362,6 +380,17 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
             meters[pce] = await self._async_fetch_meter(pce, alias, start, end, backfill)
         self.state.backfilled_days = max(self.state.backfilled_days, depth)
         return GrdfData(fetched_at=dt_util.now(), meters=meters)
+
+    async def _history_lost(self, pce: str) -> bool:
+        """The oldest imported day is no longer in the statistics: the recorder database was
+        reset (Home Assistant recreates it when it finds it corrupt). Import everything again."""
+        first = self.state.first_day.get(pce)
+        if first is None:
+            return False
+        if await async_has_row(self.hass, statistic_id(pce, KIND_ENERGY), first):
+            return False
+        _LOGGER.warning("GRDF history missing from the statistics: importing it again")
+        return True
 
     async def _async_fetch_meter(
         self, pce: str, alias: str | None, start: date, end: date, backfill: bool
@@ -441,6 +470,8 @@ class GrdfCoordinator(DataUpdateCoordinator[GrdfData]):
         days_seen = [r.gas_day for r in readings if r.gas_day]
         if days_seen:
             self.state.last_day[pce] = max(days_seen)
+            if backfill:
+                self.state.first_day[pce] = min(days_seen)
         _LOGGER.debug(
             "GRDF fetch: %d daily rows, %d temperatures, %d published rows",
             len(readings),

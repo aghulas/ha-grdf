@@ -11,6 +11,10 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.recorder import get_instance
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_wait_recording_done,
+)
 
 from custom_components.grdf_conso.api import GrdfAuthError, GrdfTemporaryError, Reading
 from custom_components.grdf_conso.const import CONF_MONTHLY, DOMAIN, PARIS
@@ -285,7 +289,7 @@ async def test_state_written_by_the_first_version_triggers_a_full_reimport(
     await setup(hass, entry)
     assert grdf.calls[0] == ("daily", OLDEST, YESTERDAY)  # the whole history, not 7 days
     assert len(await stats(hass, ENERGY)) == 10
-    assert hass_storage[storage_key(entry.entry_id)]["version"] == 3
+    assert hass_storage[storage_key(entry.entry_id)]["version"] == 4
 
 
 def _period(start: date, end: date, kwh: float) -> Reading:
@@ -362,3 +366,86 @@ async def test_depth_change_right_after_an_attempt_waits_for_the_cooldown(
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert grdf.calls == []  # less than five minutes after the previous fetch
+
+
+async def _clear_history(hass: HomeAssistant) -> None:
+    """What Home Assistant does when it finds its database corrupt: start from an empty one."""
+    ids = [statistic_id(PCE, k) for k in ("energy", "volume", "temperature", "dju")]
+    ids += [statistic_id(PCE, k) for k in ("billed_energy", "billed_volume")]
+    get_instance(hass).async_clear_statistics(ids)
+    await async_wait_recording_done(hass)
+
+
+async def test_history_lost_with_the_database_is_imported_again(
+    hass: HomeAssistant, grdf: FakeClient, freezer: FrozenDateTimeFactory
+) -> None:
+    grdf.published = [_period(date(2025, 12, 27), date(2026, 1, 27), 60000.0)]
+    entry = make_entry()
+    await setup(hass, entry)
+    assert entry.runtime_data.state.first_day == {PCE: OLDEST}
+    await _clear_history(hass)
+    assert await stats(hass, ENERGY) == []
+
+    grdf.calls.clear()
+    freezer.move_to(NOW + timedelta(minutes=10))
+    await entry.runtime_data.async_refresh()
+
+    assert grdf.calls[0] == ("daily", OLDEST, YESTERDAY)  # the whole history, not 7 days
+    assert grdf.calls[-1] == ("published", YESTERDAY - timedelta(days=1830), YESTERDAY)
+    rows = await stats(hass, ENERGY)
+    assert len(rows) == 10
+    assert [r["sum"] for r in rows] == [100.0 * n for n in range(1, 11)]
+    assert len(await stats(hass, statistic_id(PCE, "billed_energy"))) == 1
+
+    grdf.calls.clear()  # history back in place: the next fetch is the usual 7-day window
+    await entry.runtime_data.async_refresh()
+    assert grdf.calls[0] == ("daily", YESTERDAY - timedelta(days=6), YESTERDAY)
+
+
+async def test_meter_younger_than_the_history_depth_is_not_reimported_daily(
+    hass: HomeAssistant, grdf: FakeClient
+) -> None:
+    """GRDF has data only from a given day on: that day is the reference, not the depth."""
+    first_served = OLDEST + timedelta(days=4)
+    for day in list(grdf.energy):
+        if day < first_served:
+            del grdf.energy[day]
+    entry = make_entry()
+    await setup(hass, entry)
+    assert entry.runtime_data.state.first_day == {PCE: first_served}
+    await async_wait_recording_done(hass)
+
+    grdf.calls.clear()
+    await entry.runtime_data.async_refresh()
+    assert grdf.calls[0] == ("daily", YESTERDAY - timedelta(days=6), YESTERDAY)
+
+
+@pytest.mark.parametrize(
+    ("last_result", "fetches"),
+    [("running", True), ("failed", False), ("ok", False)],
+)
+async def test_fetch_cut_short_by_a_restart_is_retried_at_startup(
+    hass: HomeAssistant, grdf: FakeClient, last_result: str, fetches: bool
+) -> None:
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    state = FetchState(
+        last_day={PCE: YESTERDAY - timedelta(days=1)},
+        backfilled_days=10,
+        first_day={PCE: OLDEST},
+        last_attempt=NOW - timedelta(minutes=20),
+        last_result=last_result,
+    )
+    with patch.object(FetchState, "from_dict", return_value=state):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert bool(grdf.calls) is fetches
+    if fetches:
+        assert entry.runtime_data.state.last_result == "ok"
+
+
+async def test_a_fetch_records_its_outcome(hass: HomeAssistant, grdf: FakeClient) -> None:
+    grdf.error = GrdfTemporaryError("HTTP 500")
+    entry = make_entry()
+    await setup(hass, entry)
+    assert entry.runtime_data.state.last_result == "failed"
