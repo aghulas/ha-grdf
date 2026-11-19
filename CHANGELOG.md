@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-11-19
+
+- **Icon and logo**, shipped in the integration's `brand/` folder (Home Assistant 2026.3 and later
+  show them; the Marketplace picks them up from the latest release). Original artwork — a flame over
+  daily bars — not the logo of GRDF.
+- The HACS validation now runs its brands check too.
+
 ## 0.1.2 — 2026-11-19
 
 - **The reason of the last failed fetch is kept**, with its date, in the diagnostics and as attributes
