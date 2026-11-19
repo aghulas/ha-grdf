@@ -39,4 +39,6 @@ class GrdfProblem(GrdfEntity, BinarySensorEntity):
             "reauthentication_needed": state.auth_refused,
             "last_attempt": state.last_attempt,
             "last_success": state.last_success,
+            "last_error": state.last_error,
+            "last_error_at": state.last_error_at,
         }

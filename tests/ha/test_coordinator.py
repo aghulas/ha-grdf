@@ -449,3 +449,37 @@ async def test_a_fetch_records_its_outcome(hass: HomeAssistant, grdf: FakeClient
     entry = make_entry()
     await setup(hass, entry)
     assert entry.runtime_data.state.last_result == "failed"
+
+
+async def test_the_last_error_is_kept_without_personal_data(
+    hass: HomeAssistant, grdf: FakeClient, freezer: FrozenDateTimeFactory
+) -> None:
+    grdf.error = GrdfTemporaryError("GRDF portal unavailable (HTTP 503)")
+    entry = make_entry()
+    await setup(hass, entry)
+    state = entry.runtime_data.state
+    assert state.last_result == "failed"
+    assert state.last_error == "GRDF portal unavailable (HTTP 503)"
+    assert state.last_error_at == NOW
+
+    # A success keeps the last error and its date, for the diagnostics.
+    grdf.error = None
+    freezer.move_to(NOW + timedelta(minutes=10))
+    await entry.runtime_data.async_refresh()
+    assert state.last_result == "ok"
+    assert state.last_error_at == NOW
+
+
+async def test_an_unexpected_error_is_recorded_masked(
+    hass: HomeAssistant, grdf: FakeClient
+) -> None:
+    grdf.error = KeyError(f"releves of {PCE}")
+    entry = make_entry()
+    await setup(hass, entry)
+    state = entry.runtime_data.state
+    assert state.last_result == "failed"
+    assert state.last_error is not None
+    assert state.last_error.startswith("unexpected KeyError")
+    assert PCE not in state.last_error
+    assert "<pce>" in state.last_error
+    assert not state.auth_refused

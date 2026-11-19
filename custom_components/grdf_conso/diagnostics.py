@@ -33,6 +33,8 @@ async def async_get_config_entry_diagnostics(
             "auth_reason": state.auth_reason,
             "backfilled_days": state.backfilled_days,
             "last_result": state.last_result,
+            "last_error": state.last_error,
+            "last_error_at": state.last_error_at.isoformat() if state.last_error_at else None,
             "first_day": {
                 labels.get(pce, "meter_removed"): day.isoformat()
                 for pce, day in state.first_day.items()

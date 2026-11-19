@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-19
+
+- **The reason of the last failed fetch is kept**, with its date, in the diagnostics and as attributes
+  of the *connection problem* sensor (`last_error`, `last_error_at`). Meter numbers are masked;
+  credentials never appear in these messages. Unexpected errors are recorded too, then logged with
+  their traceback as before.
+
 ## 0.1.1 — 2026-11-19
 
 Found on the pilot installation the day after 0.1.0:
