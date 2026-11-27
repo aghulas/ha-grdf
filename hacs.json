@@ -1,5 +1,5 @@
 {
   "name": "GRDF consommations",
-  "homeassistant": "2025.11.0",
-  "render_readme": true
+  "country": "FR",
+  "homeassistant": "2025.11.0"
 }
