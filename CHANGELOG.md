@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4 — 2026-11-27
+
+Packaging only, no change in behaviour:
+
+- `hacs.json` declares the country the integration is for (`FR`) and drops the undocumented
+  `render_readme` key.
+- The CI workflows run with a read-only token.
+- README: status line no longer tied to a version, one-click link to add the repository in HACS,
+  reason for the minimum Home Assistant version.
+
 ## 0.1.3 — 2026-11-19
 
 - **Icon and logo**, shipped in the integration's `brand/` folder (Home Assistant 2026.3 and later

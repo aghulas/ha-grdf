@@ -6,7 +6,8 @@ Imports the gas consumption published by GRDF (monespace.grdf.fr) for communicat
 Assistant's long-term statistics and Energy dashboard: daily values per *journée gazière*, billing
 readings, site temperature and degree days. Read-only, for business and residential accounts.
 
-**Status: 0.1.0, first release.** It has been running on one real Home Assistant since November 2026
+**Status: early releases (0.1.x), see the [changelog](CHANGELOG.md).** It has been running on one real
+Home Assistant since November 2026
 (three years of daily history imported and checked against GRDF).
 
 ## Why another GRDF integration
@@ -26,7 +27,8 @@ provoked on a real account.
 
 ## Installation
 
-Requires Home Assistant 2025.11 or later.
+Requires Home Assistant 2025.11 or later (the release that added the unit class to statistics metadata,
+which the import relies on).
 
 **Home Assistant 2026.11 or later — Marketplace:**
 
@@ -36,6 +38,8 @@ Requires Home Assistant 2025.11 or later.
 
 **Earlier versions — HACS:** HACS → Integrations → menu → *Custom repositories*, add
 `https://github.com/aghulas/ha-grdf` as an *Integration*, install it, then restart Home Assistant.
+[This link](https://my.home-assistant.io/redirect/hacs_repository/?owner=aghulas&repository=ha-grdf&category=integration)
+opens that dialog pre-filled.
 
 **Manually:** copy `custom_components/grdf_conso` into the `custom_components` folder of your
 configuration, then restart Home Assistant.
@@ -113,7 +117,8 @@ de gaz publiée par GRDF (monespace.grdf.fr) pour les compteurs communicants : v
 gazière, relevés de facturation, température du site et degrés-jours. Lecture seule, pour les comptes
 professionnels et particuliers.
 
-**État : 0.1.0, première version publiée.** Elle tourne sur un vrai Home Assistant depuis novembre 2026
+**État : premières versions (0.1.x), voir le [journal des modifications](CHANGELOG.md).** Elle tourne sur
+un vrai Home Assistant depuis novembre 2026
 (trois ans d'historique journalier importés et recoupés avec GRDF).
 
 ### Pourquoi une autre intégration GRDF
@@ -133,7 +138,8 @@ pas été provoqué sur un vrai compte.
 
 ### Installation
 
-Home Assistant 2025.11 ou plus récent.
+Home Assistant 2025.11 ou plus récent (version qui a ajouté la classe d'unité aux métadonnées des
+statistiques, dont l'import a besoin).
 
 **Home Assistant 2026.11 ou plus récent, par le Marketplace :**
 
@@ -143,6 +149,8 @@ Home Assistant 2025.11 ou plus récent.
 
 **Versions antérieures, par HACS :** HACS → Intégrations → menu → *Dépôts personnalisés*, ajouter
 `https://github.com/aghulas/ha-grdf` comme *Intégration*, l'installer, puis redémarrer Home Assistant.
+[Ce lien](https://my.home-assistant.io/redirect/hacs_repository/?owner=aghulas&repository=ha-grdf&category=integration)
+ouvre cette fenêtre pré-remplie.
 
 **À la main :** copier `custom_components/grdf_conso` dans le dossier `custom_components` de la
 configuration, puis redémarrer Home Assistant.
